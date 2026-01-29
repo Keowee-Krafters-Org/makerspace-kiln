@@ -51,6 +51,23 @@ const isSimulated = computed(() => {
   return status.value.isSimulated
 })
 
+const statusIcon = computed(() => {
+  const map = {
+    'IDLE': '⏸️',
+    'STARTING': '🚀',
+    'RUNNING': '🔥',
+    'RAMP': '📈',
+    'SOAK': '🌡️',
+    'COOL': '📉',
+    'COMPLETED': '✅',
+    'ABORTED': '🛑',
+    'EMERGENCY_STOP': '🚨',
+    'ERROR': '⚠️',
+    'UNKNOWN': '❓'
+  };
+  return map[status.value.state] || '❓';
+});
+
 const startKiln = async () => {
   try {
     await axios.post('/api/start')
@@ -103,7 +120,13 @@ onUnmounted(() => {
   <div class="dashboard">
     <div class="status-panel" :class="{ stale: isStale }">
       <div class="status-header">
-        <h2>Status: {{ status.state }}</h2>
+        <div class="status-display">
+          <div class="status-label">STATUS</div>
+          <div class="status-content">
+            <span class="status-icon">{{ statusIcon }}</span>
+            <span class="status-text">{{ status.state }}</span>
+          </div>
+        </div>
         <div class="countdown-timer">
           <span class="label">Time Remaining</span>
           <span class="value">{{ countdown }}</span>
@@ -169,16 +192,36 @@ onUnmounted(() => {
 .status-header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   border-bottom: 1px solid #333;
   padding-bottom: 12px;
   margin-bottom: 30px;
 }
-.status-panel h2 {
-  margin-top: 0;
-  margin-bottom: 0;
+.status-display {
+  text-align: center;
+}
+.status-label {
+  color: #888;
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.status-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   color: #e1e1e1;
-  font-size: 1.8em;
+}
+.status-icon {
+  font-size: 3em;
+  line-height: 1;
+}
+.status-text {
+  font-size: 0.6rem;
+  font-weight: bold;
+  letter-spacing: 0.5px;
 }
 .countdown-timer {
   text-align: right;
@@ -265,14 +308,6 @@ onUnmounted(() => {
   grid-template-columns: 1fr;
   gap: 20px;
 }
-@media (min-width: 600px) {
-  .controls-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  .profile-panel {
-    grid-column: 1 / -1;
-  }
-}
 .buttons {
   display: flex;
   gap: 10px;
@@ -296,5 +331,51 @@ onUnmounted(() => {
   width: 100%;
   padding: 8px;
   box-sizing: border-box;
+}
+
+/* Responsive Design Updates */
+@media (min-width: 600px) {
+  .controls-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .status-panel {
+    padding: 16px;
+  }
+  .readings {
+    margin: 20px 0;
+    gap: 10px;
+  }
+  .reading {
+    padding: 10px;
+  }
+  .reading .value {
+    font-size: 1.8em;
+  }
+  .status-content {
+    font-size: 1.3em;
+  }
+}
+
+/* Mobile Landscape Optimization */
+@media (max-height: 500px) and (orientation: landscape) {
+  .dashboard {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+    max-width: 100%;
+  }
+  
+  .status-panel {
+    margin-bottom: 0;
+  }
+  
+  .controls-grid {
+    /* Stack controls vertically on the right side */
+    grid-template-columns: 1fr;
+  }
 }
 </style>
