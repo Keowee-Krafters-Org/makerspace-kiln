@@ -146,10 +146,21 @@ void runProfileLogic() {
     unsigned long elapsed = millis() - stepStartTime;
 
     if (step.type == RAMP) {
-        // Option 1: Rate-based RAMP (deg/hr)
-        if (step.rate > 0) {
+        double effectiveRate = 0.0;
+        
+        // Priority: Duration > Rate
+        if (step.duration > 0) {
+             double hours = step.duration / 60.0;
+             if (hours > 0) {
+                 effectiveRate = abs(step.targetTemperature - step.initialSetpoint) / hours;
+             }
+        } else if (step.rate > 0) {
+            effectiveRate = step.rate;
+        }
+        
+        if (effectiveRate > 0) {
             double durationHours = elapsed / 3600000.0;
-            double delta = step.rate * durationHours;
+            double delta = effectiveRate * durationHours;
             
             if (step.targetTemperature > step.initialSetpoint) {
                 // Heating up
@@ -176,23 +187,14 @@ void runProfileLogic() {
                     }
                 }
             }
-        }
-        // Option 2: Duration-based RAMP (minutes)
-        else if (step.duration > 0) {
-             unsigned long durationMs = step.duration * 60000;
-             if (elapsed >= durationMs) {
-                 // Finished
-                 setpoint = step.targetTemperature;
-                 currentStepIndex++;
-                 stepStartTime = millis();
-                 if (currentStepIndex < activeProfile.stepCount) {
-                     activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
-                     currentState = activeProfile.steps[currentStepIndex].type;
-                 }
-             } else {
-                 // Interpolate
-                 double progress = (double)elapsed / (double)durationMs;
-                 setpoint = step.initialSetpoint + ((step.targetTemperature - step.initialSetpoint) * progress);
+        } else {
+             // Zero rate or duration (instant jump)
+             setpoint = step.targetTemperature;
+             currentStepIndex++;
+             stepStartTime = millis();
+             if (currentStepIndex < activeProfile.stepCount) {
+                 activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
+                 currentState = activeProfile.steps[currentStepIndex].type;
              }
         }
     } else if (step.type == SOAK) {
@@ -312,13 +314,13 @@ unsigned long estimateTimeRemaining() {
         unsigned long elapsed = millis() - stepStartTime;
         
         if (step.type == RAMP) {
-             if (step.rate > 0) {
+             if (step.duration > 0) {
+                 unsigned long durMs = step.duration * 60000;
+                 if (durMs > elapsed) total += (durMs - elapsed);
+             } else if (step.rate > 0) {
                  double diff = abs(step.targetTemperature - setpoint);
                  double hours = diff / step.rate;
                  total += (unsigned long)(hours * 3600000);
-             } else if (step.duration > 0) {
-                 unsigned long durMs = step.duration * 60000;
-                 if (durMs > elapsed) total += (durMs - elapsed);
              }
         } else if (step.type == SOAK) {
              unsigned long durMs = step.duration * 60000;
@@ -333,13 +335,13 @@ unsigned long estimateTimeRemaining() {
             ProfileStep& prev = activeProfile.steps[i-1];
             
             if (step.type == RAMP) {
-                if (step.rate > 0) {
+                if (step.duration > 0) {
+                    total += step.duration * 60000;
+                } else if (step.rate > 0) {
                     double startT = prev.targetTemperature;
                     double diff = abs(step.targetTemperature - startT);
                     double hours = diff / step.rate;
                     total += (unsigned long)(hours * 3600000);
-                } else if (step.duration > 0) {
-                    total += step.duration * 60000;
                 }
             } else if (step.type == SOAK) {
                 total += step.duration * 60000;
