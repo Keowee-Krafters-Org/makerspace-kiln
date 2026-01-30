@@ -8,7 +8,9 @@ cd "$(dirname "$0")"
 
 # Load environment configuration
 if [ -f .env ]; then
-    export $(cat .env | xargs)
+    set -a
+    source .env
+    set +a
 fi
 
 if [ "$ENVIRONMENT_TYPE" == "wsl" ]; then
@@ -16,7 +18,7 @@ if [ "$ENVIRONMENT_TYPE" == "wsl" ]; then
     git pull
 
     echo "Detaching from WSL..."
-    ./wslShare.sh off
+    ./wslShare.sh detach-all
 fi
 
 echo "Building and uploading firmware..."
