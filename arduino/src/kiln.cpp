@@ -180,7 +180,9 @@ void runProfileLogic() {
         }
 
         // 2. Handle Natural Cool (Specific Case: COOL with no Rate/Duration)
-        if (step.type == COOL && effectiveRate <= 0) {
+        bool isNaturalCool = (step.type == COOL && step.duration == 0 && step.rate == 0);
+
+        if (isNaturalCool) {
             setpoint = 0;
             if (input <= step.targetTemperature) {
                 stepComplete = true;
@@ -200,11 +202,16 @@ void runProfileLogic() {
                     if (setpoint < step.targetTemperature) setpoint = step.targetTemperature;
                 }
             } else {
-                // Instant Jump (RAMP with rate/dur 0)
+                // Instant Jump (RAMP with rate/dur 0) or Holding (if rate 0)
                 setpoint = step.targetTemperature;
             }
 
-            // 4. Check for Completion (Wait for Reach)
+            // 4. Check for Completion (Wait for Reach + Duration)
+            bool durationMet = true;
+            if (step.duration > 0) {
+                 durationMet = (elapsed >= (unsigned long)step.duration * 60000);
+            }
+
             bool targetReached = false;
             bool inputReached = false;
             
@@ -218,7 +225,8 @@ void runProfileLogic() {
                 if (input <= step.targetTemperature) inputReached = true;
             }
             
-            if (targetReached && inputReached) {
+            // Step is complete when Duration is met AND Target is reached (Setpoint & Input)
+            if (durationMet && targetReached && inputReached) {
                 stepComplete = true;
                 nextInitial = setpoint;
             }
