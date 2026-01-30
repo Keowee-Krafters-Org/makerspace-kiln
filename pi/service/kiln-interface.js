@@ -127,19 +127,23 @@ class KilnInterface {
 
     /**
      * Set the kiln profile
-     * @param {number} targetTemperature - Target temp in Celsius
-     * @param {number} rampTime - Minutes to reach target
-     * @param {number} soakDuration - Minutes to hold target
-     * @param {number} coolTime - Minutes to cool down (determines rate)
+     * @param {Object} profile - Full profile object with steps
      */
-    setProfile(targetTemperature, rampTime, soakDuration, coolTime) {
-        this.sendCommand({
+    setProfile(profile) {
+        // Transform service profile format to Arduino command format if needed
+        // Service: { steps: [{ number, targetTemperature, duration, rate, mode, initialSetpoint }] }
+        // Arduino expects: { command: "profile", steps: [...] }
+        
+        const cmd = {
             command: 'profile',
-            targetTemperature,
-            rampTime,
-            soakDuration,
-            coolTime
-        });
+            steps: profile.steps.map(s => ({
+                type: s.mode, // RAMP, SOAK, COOL...
+                targetTemperature: s.targetTemperature,
+                duration: s.duration, // minutes
+                rate: s.rate // degrees/hour
+            }))
+        };
+        this.sendCommand(cmd);
     }
 
     getStatus() {

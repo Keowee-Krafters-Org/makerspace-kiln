@@ -26,6 +26,29 @@ app.use(express.static(config.clientPath));
 
 // --- Web API Routes ---
 
+// --- Profiles ---
+app.get('/api/profiles', (req, res) => {
+    res.json(kilnDatabase.db.data.profiles || []);
+});
+
+app.post('/api/profiles', async (req, res) => {
+    const profile = await kilnDatabase.addProfile(req.body);
+    res.json(profile);
+});
+
+app.put('/api/profiles/:id', async (req, res) => {
+    const id = parseInt(req.params.id);
+    const profile = await kilnDatabase.updateProfile(id, req.body);
+    if (profile) res.json(profile);
+    else res.status(404).json({ error: 'Profile not found' });
+});
+
+app.delete('/api/profiles/:id', async (req, res) => {
+    const id = parseInt(req.params.id);
+    await kilnDatabase.deleteProfile(id);
+    res.json({ success: true });
+});
+
 // GET /api/history - Get all history records
 app.get('/api/history', (req, res) => {
     res.json(kilnDatabase.db.data.sessions);
@@ -77,7 +100,21 @@ app.get('/api/status', (req, res) => {
 });
 
 // POST /api/start - Start the kiln
-app.post('/api/start', (req, res) => {
+app.post('/api/start', async (req, res) => {
+    const { profileId } = req.body;
+    
+    if (profileId) {
+        const profile = kilnDatabase.db.data.profiles?.find(p => p.id === profileId);
+        if (profile) {
+            console.log(`Loading profile ${profile.name} before starting...`);
+            kiln.setProfile(profile);
+            // Give a small delay for the profile to be processed by Arduino before starting?
+            // Actually, Arduino will process commands sequentially.
+        } else {
+             return res.status(404).json({ success: false, message: 'Profile not found' });
+        }
+    }
+
     kiln.start();
     res.json({ success: true, message: 'Start command sent' });
 });

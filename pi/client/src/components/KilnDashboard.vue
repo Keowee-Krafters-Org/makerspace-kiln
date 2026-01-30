@@ -23,6 +23,8 @@ const status = ref({
 })
 const loading = ref(false)
 const message = ref('')
+const profiles = ref([])
+const selectedProfileId = ref(null)
 
 let eventSource = null
 
@@ -69,8 +71,12 @@ const statusIcon = computed(() => {
 });
 
 const startKiln = async () => {
+    if (!selectedProfileId.value) {
+        message.value = 'Please select a profile first';
+        return;
+    }
   try {
-    await axios.post('/api/start')
+    await axios.post('/api/start', { profileId: selectedProfileId.value })
     message.value = 'Start command sent'
   } catch (err) {
     message.value = 'Error sending start'
@@ -90,7 +96,17 @@ const handleTempUpdate = (newTemp) => {
   emit('update:testParams', { ...props.testParams, temperature: newTemp })
 }
 
-onMounted(() => {
+onMounted(async () => {
+    try {
+        const res = await axios.get('/api/profiles');
+        profiles.value = res.data;
+        if (profiles.value.length > 0) {
+            selectedProfileId.value = profiles.value[0].id;
+        }
+    } catch(e) {
+        console.error("Failed to load profiles", e);
+    }
+
   // Setup SSE
   eventSource = new EventSource('/api/events');
   
@@ -159,6 +175,12 @@ onUnmounted(() => {
     <div class="controls-grid">
       <div class="card control-panel">
         <h3>Controls</h3>
+        <div class="profile-selector">
+            <label>Select Profile:</label>
+            <select v-model="selectedProfileId">
+                <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+        </div>
         <div class="buttons">
           <button @click="startKiln" class="start-btn">START</button>
           <button @click="stopKiln" class="stop-btn">STOP</button>
@@ -307,6 +329,19 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: 1fr;
   gap: 20px;
+}
+.profile-selector {
+    margin-bottom: 20px;
+}
+.profile-selector select {
+    width: 100%;
+    padding: 10px;
+    margin-top: 5px;
+    background: #333;
+    color: white;
+    border: 1px solid #555;
+    border-radius: 4px;
+    font-size: 1.1em;
 }
 .buttons {
   display: flex;

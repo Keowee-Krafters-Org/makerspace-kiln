@@ -33,7 +33,28 @@ class KilnDatabase {
     await this.db.write();
     return newSession;
   }
+  async addProfile(profile) {
+    if (!this.db.data.profiles) this.db.data.profiles = [];
+    const newProfile = { ...profile, id: Date.now() };
+    this.db.data.profiles.push(newProfile);
+    await this.db.write();
+    return newProfile;
+  }
 
+  async updateProfile(id, profile) {
+    if (!this.db.data.profiles) return null;
+    const index = this.db.data.profiles.findIndex(p => p.id === id);
+    if (index === -1) return null;
+    this.db.data.profiles[index] = { ...profile, id };
+    await this.db.write();
+    return this.db.data.profiles[index];
+  }
+
+  async deleteProfile(id) {
+    if (!this.db.data.profiles) return;
+    this.db.data.profiles = this.db.data.profiles.filter(p => p.id !== id);
+    await this.db.write();
+  }
   /**
    * Adds a status event to an active session.
    * @param {number} sessionId The ID of the session to add the event to.
@@ -78,7 +99,7 @@ class KilnDatabase {
 }
 
 const adapter = new JSONFile(file);
-const defaultData = { sessions: [] };
+const defaultData = { sessions: [], profiles: [] };
 const kilnDatabase = await new KilnDatabase(adapter, defaultData).init();
 
 export default kilnDatabase;

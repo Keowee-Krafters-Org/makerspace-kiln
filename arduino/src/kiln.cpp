@@ -1,73 +1,60 @@
-/**
- * Kiln Controller
- * 
- * JSON Commands: 
- * - {"command":"start"}
- * - {"command":"stop"}
- * - {"command":"profile", "targetTemperature": 1200, "rampTime": 60, "soakDuration": 10, "coolTime": 60}
- * - {"command":"status"}
- * - {"command":"testInput", "temperature": 1200, "duration": 20, "setPoint": 1000}
- * Note: temperature in Celsius, rampRate in degrees/hour, soakDuration in minutes
- * Logging over external USB-to-Serial adapter at 9600 baud.
- * testInput allows simulating temperature readings for testing. duration and initial setpoint are optional.
+/*
+ * Kiln Controller v0.2.0
+ * Multi-step profile support
  */
-
-       
 #include "kiln.h"
+
 // --- Hardware Pins ---
 #define DO   3
 #define CS   4
 #define CLK  5
 #define SSR_PIN_UPPER 6
 #define SSR_PIN_LOWER 7
-#define LED_PIN 13 // Built-in LED
+#define LED_PIN 13 
 
-// --- State Machine ---
-enum KilnState { IDLE, STARTING, RAMP, SOAK, COOLING, COMPLETED, ABORTED, EMERGENCY_STOP };
+// --- Configuration ---
+#define PID_WINDOW_SIZE 10000
+
+// --- Globals ---
 KilnState currentState = IDLE;
+Profile activeProfile;
+int currentStepIndex = 0;
 
-// --- Thermal Variables ---
-double setpoint, input, output;
-double targetTemperature = 0; // Target temperature for the ramp state
-double Kp=2, Ki=0.5, Kd=2; // Initial tuning values
-double rampRate = 300; // degrees per hour
+double setpoint = 0, input = 0, output = 0;
+double Kp=2, Ki=0.5, Kd=2;
 PID kilnPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
-
 Adafruit_MAX31855 thermocouple(CLK, CS, DO);
 
-// --- Simulation/Test Mode ---
+// Simulation
 bool isSimulated = false;
 double simulatedInput = 0.0;
 unsigned long simulationStartTime = 0;
 unsigned long simulationTimeout = 0;
 
-// SSR Windowing (10-second cycle)
-unsigned long windowSize = 10000;
+// Timing
 unsigned long windowStartTime;
-
-unsigned long soakDuration = 600000; // 10 minutes
-unsigned long soakTimeElapsed = 0;
-unsigned long coolRate = 300; // degrees per hour
+unsigned long stepStartTime = 0;
 unsigned long lastReportTime = 0;
-unsigned long reportInterval = 10000; // Report every 10 seconds
-unsigned long timeRemaining = 0;
-unsigned long lastTimeRemainingUpdate = 0;
+const unsigned long REPORT_INTERVAL = 2000;
 
-// --- LED Indicator ---
+// LED
 unsigned long ledLastChangeTime = 0;
 bool ledState = HIGH;
 
-
+// Prototypes
+KilnState parseStateString(const char* str);
+const char* stateToString(KilnState s);
+void runProfileLogic();
+void forceStop();
 
 void setup() {
-    // Initialize the external USB-to-Serial adapter for logging
     Serial_.begin(9600); 
-    while(!Serial_); // Wait for Serial to be ready
-    delay(2000); // Allow time for connection
+    while(!Serial_); 
+    delay(2000); 
     
     JsonDocument doc;
-    doc["state"] = "setup";
-    doc["message"] = "Kiln controller starting up...";
+    doc["state"] = "IDLE";
+    doc["message"] = "Kiln Controller 2.0 Starting";
     doc["version"] = VERSION;
     serializeJson(doc, Serial_);
     Serial_.println();
@@ -77,43 +64,15 @@ void setup() {
     pinMode(LED_PIN, OUTPUT);
     
     windowStartTime = millis();
-    lastTimeRemainingUpdate = millis();
-    kilnPID.SetOutputLimits(0, windowSize);
+    kilnPID.SetOutputLimits(0, PID_WINDOW_SIZE);
     kilnPID.SetMode(AUTOMATIC);
 }
 
 void loop() {
     unsigned long now = millis();
-    // Update time remaining
-    if (currentState == RAMP || currentState == SOAK || currentState == COOLING) {
-        unsigned long elapsed = now - lastTimeRemainingUpdate;
-        if (timeRemaining >= elapsed) {
-            timeRemaining -= elapsed;
-        } else {
-            timeRemaining = 0;
-        }
-    }
-    lastTimeRemainingUpdate = now;
 
-    // Check for incoming serial data
-    if (Serial_.available() > 0) {
-        String input = Serial_.readStringUntil('\n');
-        // Trim whitespace to avoid empty lines triggering parsing
-        input.trim();
-        if (input.length() == 0) return;
-
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, input);
-        if (error) {
-            Serial_.print(F("deserializeJson() failed: "));
-            Serial_.println(error.c_str());
-            return;
-        }
-        handleCommand(doc);
-    }
-
-    // 1. Read Temperature
-    if (isSimulated && (millis() - simulationStartTime < simulationTimeout)) {
+    // 1. Read Input
+    if (isSimulated && (now - simulationStartTime < simulationTimeout)) {
         input = simulatedInput;
     } else {
         isSimulated = false;
@@ -122,115 +81,37 @@ void loop() {
     
     if (isnan(input)) {
         currentState = EMERGENCY_STOP;
-   }
-
-    // Check for Window Rollover (10s cycle) used for integration and PWM
-    now = millis();
-    bool onWindowRollover = false;
-    if (now - windowStartTime > windowSize) {
-        windowStartTime += windowSize;
-        onWindowRollover = true;
     }
 
-    // 2. Logic for State Transitions (simplified example)
-    switch (currentState) {
-        case IDLE:
-            break;
-        case STARTING:
-            {
-                // Calculate total estimated time
-                unsigned long rampTime = 0;
-                if (rampRate > 0 && targetTemperature > input) {
-                    rampTime = (unsigned long)(((targetTemperature - input) / rampRate) * 3600000);
-                }
-                unsigned long coolTime = 0;
-                if (coolRate > 0 && targetTemperature > 50) {
-                     coolTime = (unsigned long)(((targetTemperature - 50) / coolRate) * 3600000);
-                }
-                timeRemaining = rampTime + soakDuration + coolTime;
+    // 2. Serial Commands
+    if (Serial_.available() > 0) {
+        String s = Serial_.readStringUntil('\n');
+        s.trim();
+        if (s.length() > 0) {
+            JsonDocument doc;
+            DeserializationError error = deserializeJson(doc, s);
+            if (!error) {
+                handleCommand(doc);
             }
-            reportStatus(true);
-            currentState = RAMP;
-            break;
-        case RAMP:
-            // Increment setpoint over time based on degrees/hour
-            if (setpoint >= targetTemperature && input >= targetTemperature) {
-                setpoint = targetTemperature;
-                currentState = SOAK;
-                soakTimeElapsed = 0;
-                
-                // Recalculate remaining time for Soak + Cool
-                unsigned long coolTime = 0;
-                if (coolRate > 0 && targetTemperature > 50) {
-                     coolTime = (unsigned long)(((targetTemperature - 50) / coolRate) * 3600000);
-                }
-                timeRemaining = soakDuration + coolTime;
-            }
-            if (onWindowRollover) {
-                if (setpoint < targetTemperature) {
-                    setpoint += (rampRate / 3600) * (windowSize / 1000); // Update setpoint
-                    if (setpoint > targetTemperature) {
-                        setpoint = targetTemperature;
-                    }
-                }
-            }
-            break;
-        case SOAK:
-            // Maintain setpoint for soak duration
-            if(soakTimeElapsed > soakDuration) {
-                currentState = COOLING;
-                 // Recalculate remaining time for Cool
-                unsigned long coolTime = 0;
-                if (coolRate > 0 && setpoint > 50) {
-                     coolTime = (unsigned long)(((setpoint - 50) / coolRate) * 3600000);
-                }
-                timeRemaining = coolTime;
-            }
-            if (onWindowRollover) {
-                soakTimeElapsed += windowSize;
-            }
-            break;
-
-        case COOLING:
-            // Allow temperature to drop naturally
-            if (input < 50) { // Arbitrary threshold to return to IDLE
-                currentState = COMPLETED;
-                timeRemaining = 0;
-            }
-            if (onWindowRollover && coolRate > 0) {
-                setpoint -= (coolRate / 3600) * (windowSize / 1000); // Decrease setpoint
-                if (setpoint < 25) setpoint = 25; // Clamp at room temp
-            } else if (coolRate == 0) {
-                // Natural cooling, just update setpoint to track input so we don't fire
-                // Or set it to 0. Let's set to 0.
-                setpoint = 0;
-            }
-            break;
-        case EMERGENCY_STOP:
-            digitalWrite(SSR_PIN_UPPER, LOW);
-            digitalWrite(SSR_PIN_LOWER, LOW);            
-            timeRemaining = 0;
-            // The updateLedIndicator() function will handle the blinking
-            break;
-        case COMPLETED:
-        case ABORTED:
-            timeRemaining = 0;
-            reportStatus(true);
-            isSimulated = false; // Added
-            digitalWrite(SSR_PIN_UPPER, LOW);
-            digitalWrite(SSR_PIN_LOWER, LOW);
-            currentState = IDLE;
-            break;
-        default: break;
+        }
     }
 
+    // 3. Logic
+    if (currentState == RAMP || currentState == SOAK || currentState == COOL) {
+        runProfileLogic();
+    } else if (currentState == COMPLETED || currentState == ABORTED || currentState == EMERGENCY_STOP) {
+        forceStop();
+    }
 
-    // 3. Compute PID & Control SSR
-    // Only compute PID if not in an emergency stop state or IDLE
-    if (currentState != EMERGENCY_STOP && currentState != IDLE && currentState != COMPLETED && currentState != ABORTED && currentState != STARTING) {
+    // 4. PID & Output
+    if (currentState == RAMP || currentState == SOAK) {
+        // Window Rollover
+        if (now - windowStartTime > PID_WINDOW_SIZE) {
+            windowStartTime += PID_WINDOW_SIZE;
+        }
+        
         kilnPID.Compute();
         
-        // Time-Proportioning (Software PWM)
         if (output > (now - windowStartTime)) {
             digitalWrite(SSR_PIN_UPPER, HIGH);
             digitalWrite(SSR_PIN_LOWER, HIGH);
@@ -239,42 +120,180 @@ void loop() {
             digitalWrite(SSR_PIN_LOWER, LOW);
         }
     } else {
-        // Force SSRs off in IDLE or EMERGENCY_STOP
-        digitalWrite(SSR_PIN_UPPER, LOW);
-        digitalWrite(SSR_PIN_LOWER, LOW);
+        forceStop();
     }
 
-    // 4. Update LED Indicator
+    // 5. Reporting
     updateLedIndicator();
     reportStatus();
 }
 
-void reportStatus(bool forceReport) {
-    // Report current status as JSON every repott interval
-    if (millis() - lastReportTime >= reportInterval || forceReport) {
-        lastReportTime = millis();
-        
-        JsonDocument doc;
-        switch (currentState) {
-            case IDLE: doc["state"] = "IDLE"; break;
-            case STARTING: doc["state"] = "STARTING"; break;
-            case RAMP: doc["state"] = "RAMP"; break;
-            case SOAK: doc["state"] = "SOAK"; break;
-            case COOLING: doc["state"] = "COOLING"; break;
-            case COMPLETED: doc["state"] = "COMPLETED"; break;
-            case ABORTED: doc["state"] = "ABORTED"; break;
-            case EMERGENCY_STOP: doc["state"] = "EMERGENCY_STOP"; break;
-        }
+void forceStop() {
+    output = 0;
+    digitalWrite(SSR_PIN_UPPER, LOW);
+    digitalWrite(SSR_PIN_LOWER, LOW);
+}
 
-        doc["targetTemperature"] = targetTemperature;
-        doc["timeRemaining"] = timeRemaining;
-        doc["setpoint"] = setpoint;
+void runProfileLogic() {
+    if (currentStepIndex >= activeProfile.stepCount) {
+        currentState = COMPLETED;
+        return;
+    }
+
+    ProfileStep& step = activeProfile.steps[currentStepIndex];
+    unsigned long elapsed = millis() - stepStartTime;
+
+    if (step.type == RAMP) {
+        // Rate is deg/hr
+        double durationHours = elapsed / 3600000.0;
+        double delta = step.rate * durationHours;
+        
+        if (step.targetTemperature > step.initialSetpoint) {
+            // Heating up
+            setpoint = step.initialSetpoint + delta;
+            if (setpoint >= step.targetTemperature) {
+                setpoint = step.targetTemperature;
+                currentStepIndex++;
+                stepStartTime = millis();
+                if (currentStepIndex < activeProfile.stepCount) {
+                    activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
+                    currentState = activeProfile.steps[currentStepIndex].type;
+                }
+            }
+        } else {
+            // Cooling down (controlled)
+            setpoint = step.initialSetpoint - delta;
+            if (setpoint <= step.targetTemperature) {
+                setpoint = step.targetTemperature;
+                currentStepIndex++;
+                stepStartTime = millis();
+                if (currentStepIndex < activeProfile.stepCount) {
+                    activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
+                    currentState = activeProfile.steps[currentStepIndex].type;
+                }
+            }
+        }
+    } else if (step.type == SOAK) {
+        setpoint = step.targetTemperature;
+        if (elapsed >= (step.duration * 60000)) {
+            currentStepIndex++;
+            stepStartTime = millis();
+            if (currentStepIndex < activeProfile.stepCount) {
+                activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
+                currentState = activeProfile.steps[currentStepIndex].type;
+            }
+        }
+    } else if (step.type == COOL) {
+        setpoint = 0; // Natural cool
+        if (input <= step.targetTemperature) {
+            currentStepIndex++;
+            stepStartTime = millis();
+            if (currentStepIndex < activeProfile.stepCount) {
+                activeProfile.steps[currentStepIndex].initialSetpoint = input;
+                currentState = activeProfile.steps[currentStepIndex].type;
+            }
+        }
+    }
+}
+
+void handleCommand(JsonDocument& doc) {
+    const char* cmd = doc["command"];
+    JsonDocument response;
+    response["status"] = "ok";
+
+    if (strcmp(cmd, "profile") == 0) {
+        // Parse ID and Name
+        activeProfile.id = doc["id"] | 0;
+        strlcpy(activeProfile.name, doc["name"] | "Unnamed", sizeof(activeProfile.name));
+
+        JsonArray steps = doc["steps"];
+        activeProfile.stepCount = 0;
+        for(JsonObject s : steps) {
+            if (activeProfile.stepCount >= MAX_PROFILE_STEPS) break;
+            ProfileStep& ps = activeProfile.steps[activeProfile.stepCount];
+            ps.type = parseStateString(s["type"]);
+            ps.targetTemperature = s["targetTemperature"]; // float
+            ps.duration = s["duration"]; // int (minutes)
+            ps.rate = s["rate"]; // float (deg/hr)
+            activeProfile.stepCount++;
+        }
+        currentStepIndex = 0;
+        currentState = IDLE;
+        response["message"] = "Profile loaded";
+    } 
+    else if (strcmp(cmd, "start") == 0) {
+        if (activeProfile.stepCount > 0) {
+            currentStepIndex = 0;
+            currentState = activeProfile.steps[0].type;
+            // Best effort start point
+            activeProfile.steps[0].initialSetpoint = (isnan(input) ? 25 : input); 
+            stepStartTime = millis();
+            response["message"] = "Started";
+        } else {
+            response["status"] = "error";
+            response["message"] = "No profile loaded";
+        }
+    }
+    else if (strcmp(cmd, "stop") == 0) {
+        currentState = ABORTED;
+        response["message"] = "Stopped";
+    }
+    else if (strcmp(cmd, "testInput") == 0) {
+        simulatedInput = doc["temperature"];
+        isSimulated = true;
+        simulationStartTime = millis();
+        simulationTimeout = 60000; 
+        if (doc.containsKey("duration")) {
+            simulationTimeout = (unsigned long)doc["duration"] * 60000;
+        }
+        if (doc.containsKey("setPoint")) {
+            setpoint = doc["setPoint"];
+        }
+        response["message"] = "Simulating";
+    }
+    else if (strcmp(cmd, "status") == 0) {
+        reportStatus(true);
+        return; 
+    }
+    
+    serializeJson(response, Serial_);
+    Serial_.println();
+}
+
+KilnState parseStateString(const char* str) {
+    if (!str) return IDLE;
+    if (strcmp(str, "RAMP") == 0) return RAMP;
+    if (strcmp(str, "SOAK") == 0) return SOAK;
+    if (strcmp(str, "COOL") == 0) return COOL;
+    return IDLE;
+}
+
+const char* stateToString(KilnState s) {
+    switch(s) {
+        case IDLE: return "IDLE";
+        case RAMP: return "RAMP";
+        case SOAK: return "SOAK";
+        case COOL: return "COOL";
+        case COMPLETED: return "COMPLETED";
+        case ABORTED: return "ABORTED";
+        case EMERGENCY_STOP: return "EMERGENCY_STOP";
+        default: return "UNKNOWN";
+    }
+}
+
+void reportStatus(bool force) {
+    if (force || (millis() - lastReportTime > REPORT_INTERVAL)) {
+        lastReportTime = millis();
+        JsonDocument doc;
+        doc["state"] = stateToString(currentState);
+        doc["profileId"] = activeProfile.id;
+        doc["currentStep"] = currentStepIndex + 1;
+        doc["totalSteps"] = activeProfile.stepCount;
         doc["input"] = input;
-        doc["ssrUpper"] = digitalRead(SSR_PIN_UPPER) == HIGH;
-        doc["ssrLower"] = digitalRead(SSR_PIN_LOWER) == HIGH;
+        doc["setpoint"] = setpoint;
         doc["output"] = output;
         doc["isSimulated"] = isSimulated;
-
+        
         serializeJson(doc, Serial_);
         Serial_.println();
     }
@@ -282,151 +301,15 @@ void reportStatus(bool forceReport) {
 
 void updateLedIndicator() {
     unsigned long now = millis();
-    unsigned long onTime = 0;
-    unsigned long offTime = 0;
-
-    switch (currentState) {
-        case RAMP:
-            digitalWrite(LED_PIN, HIGH); // Solid on
-            return; // Exit function, no blinking needed
-        case SOAK:
-            onTime = 500; // Slow flash
-            offTime = 500;
-            break;
-        case EMERGENCY_STOP:
-            onTime = 100; // Rapid flash
-            offTime = 100;
-            break;
-        case IDLE:
-        case COOLING:
-        default:
-            digitalWrite(LED_PIN, LOW); // Solid off
-            return; // Exit function
-    }
-
-    // Blinking logic for SOAK and EMERGENCY_STOP
-    if (ledState == HIGH && (now - ledLastChangeTime >= onTime)) {
-        ledState = LOW;
-        ledLastChangeTime = now;
-        digitalWrite(LED_PIN, ledState);
-    } else if (ledState == LOW && (now - ledLastChangeTime >= offTime)) {
-        ledState = HIGH;
-        ledLastChangeTime = now;
-        digitalWrite(LED_PIN, ledState);
-    }
-}
-
-void handleCommand(JsonDocument& doc) {
-    const char* command = doc["command"];
-
-    if (strcmp(command, "start") == 0) {
-        currentState = STARTING;
-        JsonDocument response;
-        response["status"] = "ok";
-        response["message"] = "Kiln started";
-        serializeJson(response, Serial_);
-        Serial_.println();
-    } else if (strcmp(command, "stop") == 0) {
-        currentState = ABORTED;
-        isSimulated = false; // Added
-        digitalWrite(SSR_PIN_UPPER, LOW); // Ensure SSR is off
-        digitalWrite(SSR_PIN_LOWER, LOW);
-        JsonDocument response;
-        response["status"] = "ok";
-        response["message"] = "Kiln stopped";
-        serializeJson(response, Serial_);
-        Serial_.println();
-    } else if (strcmp(command, "profile") == 0) {
-        // Example of setting a profile
-        // {"command":"profile", "targetTemperature": 1000, "rampTime": 60, "soakDuration": 600}
-        targetTemperature = doc["targetTemperature"];
-        
-        // Reset the current setpoint to the current input so we ramp from here
-        if (input > 0 && !isnan(input)) {
-            setpoint = input;
-        } else {
-            setpoint = 0;
+    if (currentState == RAMP) {
+        digitalWrite(LED_PIN, HIGH);
+    } else if (currentState == SOAK) {
+        if (now - ledLastChangeTime > 500) {
+            ledState = !ledState;
+            digitalWrite(LED_PIN, ledState);
+            ledLastChangeTime = now;
         }
-        
-        if (doc["rampTime"].is<double>()) {
-            double rampTime = doc["rampTime"]; // in minutes
-            if (rampTime > 0) {
-                // Calculate rampRate in degrees per hour
-                rampRate = ((targetTemperature - setpoint) / rampTime) * 60.0;
-                if (rampRate < 0) rampRate = -rampRate; // Ensure positive rate
-            } else {
-                rampRate = 300; // Default or fallback
-            }
-        } else {
-            rampRate = 300; // Default
-        }
-
-        if (doc["soakDuration"].is<unsigned long>()) {
-            unsigned long durationMinutes = doc["soakDuration"];
-            soakDuration = durationMinutes * 60000;
-        } else {
-            soakDuration = 600000; // Default to 10 minutes
-        }
-
-        if (doc["coolTime"].is<double>()) {
-            double coolTime = doc["coolTime"]; // in minutes
-            if (coolTime > 0) {
-                 // Calculate coolRate in degrees per hour to get to 25C
-                 // (Current Target - 25) / Hours
-                coolRate = ((targetTemperature - 25) / coolTime) * 60.0;
-                if (coolRate < 0) coolRate = -coolRate; 
-            } else {
-                coolRate = 0; // Natural cooling
-            }
-        } else {
-            coolRate = 0; // Default to natural cooling
-        }
-        
-        JsonDocument response;
-        response["status"] = "ok";
-        response["message"] = "Profile updated";
-        serializeJson(response, Serial_);
-        Serial_.println();
-    } else if (strcmp(command, "status") == 0) {
-        reportStatus();
-    } else if (strcmp(command, "testInput") == 0) {
-        // {"command": "testInput", "temperature": 500, "duration": 5, "setPoint": 1000}
-        if (doc["temperature"].is<float>()) {
-            simulatedInput = doc["temperature"];
-            
-            // Optional duration (default to existing timeout if not provided, or some default)
-            if (doc["duration"].is<unsigned long>()) {
-                unsigned long durationMinutes = doc["duration"];
-                simulationTimeout = durationMinutes * 60000;
-                simulationStartTime = millis();
-                currentState = IDLE; 
-            } else if (simulationTimeout == 0) {
-                 // If no duration provided and we aren't already running, default to a safe value or infinite? 
-                 // Let's say if no duration is sent, we just update the temp and keep existing timer 
-                 // If timer expired or not set, default to 5 minutes for safety
-                 if (!isSimulated) {
-                     simulationTimeout = 5 * 60000;
-                     simulationStartTime = millis();
-                 }
-            }
-
-            // Optional setPoint
-            if (doc["setPoint"].is<double>()) {
-                setpoint = doc["setPoint"];
-            }
-
-            isSimulated = true;
-            JsonDocument response;
-            response["status"] = "ok";
-            response["message"] = "Simulation started/updated";
-            serializeJson(response, Serial_);
-            Serial_.println();
-        } else {
-            JsonDocument response;
-            response["status"] = "error";
-            response["message"] = "Missing temperature";
-            serializeJson(response, Serial_);
-            Serial_.println();
-        }
+    } else {
+        digitalWrite(LED_PIN, LOW);
     }
 }
