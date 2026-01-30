@@ -19,6 +19,7 @@
 KilnState currentState = IDLE;
 Profile activeProfile;
 int currentStepIndex = 0;
+unsigned long totalProfileDuration = 0; // Total estimated duration in ms
 
 double setpoint = 0, input = 0, output = 0;
 // Tuning for seconds-based window output (0-10000ms)
@@ -36,6 +37,9 @@ unsigned long simulationTimeout = 0;
 // Timing
 unsigned long windowStartTime;
 unsigned long stepStartTime = 0;
+unsigned long profileStartTime = 0;
+unsigned long lastReportTime = 0;
+unsigned long stepStartTime = 0;
 unsigned long lastReportTime = 0;
 const unsigned long REPORT_INTERVAL = 2000;
 
@@ -48,6 +52,7 @@ KilnState parseStateString(const char* str);
 const char* stateToString(KilnState s);
 void runProfileLogic();
 void forceStop();
+unsigned long calculateTotalDuration();
 
 void setup() {
     Serial_.begin(9600); 
@@ -267,6 +272,8 @@ void handleCommand(JsonDocument& doc) {
             // Best effort start point
             activeProfile.steps[0].initialSetpoint = (isnan(input) ? 25 : input); 
             stepStartTime = millis();
+            profileStartTime = millis();
+            totalProfileDuration = calculateTotalDuration();
             response["message"] = "Started";
         } else {
             response["status"] = "error";
@@ -325,73 +332,54 @@ const char* stateToString(KilnState s) {
     }
 }
 
-unsigned long estimateTimeRemaining() {
+unsigned long calculateTotalDuration() {
     unsigned long total = 0;
+    double currentTemp = isnan(input) ? 25.0 : input;
     
-    // 1. Current Step Remaining
-    if (activeProfile.stepCount > 0 && currentStepIndex < activeProfile.stepCount) {
-        ProfileStep& step = activeProfile.steps[currentStepIndex];
-        unsigned long elapsed = millis() - stepStartTime;
+    for(int i=0; i < activeProfile.stepCount; i++) {
+        ProfileStep& step = activeProfile.steps[i];
         
         if (step.type == RAMP) {
-             if (step.duration > 0) {
-                 unsigned long durMs = step.duration * 60000;
-                 if (durMs > elapsed) total += (durMs - elapsed);
-             } else if (step.rate > 0) {
-                 double diff = abs(step.targetTemperature - setpoint);
-                 double hours = diff / step.rate;
-                 total += (unsigned long)(hours * 3600000);
-             }
+            if (step.duration > 0) {
+                total += (unsigned long)step.duration * 60000;
+                currentTemp = step.targetTemperature;
+            } else if (step.rate > 0) {
+                double diff = abs(step.targetTemperature - currentTemp);
+                double hours = diff / step.rate;
+                total += (unsigned long)(hours * 3600000);
+                currentTemp = step.targetTemperature;
+            } else {
+                 // Instant jump, 0 time
+                 currentTemp = step.targetTemperature;
+            }
         } else if (step.type == SOAK) {
-             unsigned long durMs = step.duration * 60000;
-             if (durMs > elapsed) total += (durMs - elapsed);
+            total += (unsigned long)step.duration * 60000;
         } else if (step.type == COOL) {
-             // For Natural Cool, we can only estimate if a duration or rate is provided as a hint
              if (step.duration > 0) {
-                 unsigned long durMs = step.duration * 60000;
-                 if (durMs > elapsed) total += (durMs - elapsed);
+                 total += (unsigned long)step.duration * 60000;
              } else {
-                 // Fallback: Assume 150 deg/hr cooling rate for estimation if nothing else known
+                 // Fallback estimate for natural cool
                  double diff = 0;
-                 if (input > step.targetTemperature) diff = input - step.targetTemperature;
+                 if (currentTemp > step.targetTemperature) diff = currentTemp - step.targetTemperature;
                  double hours = diff / 150.0;
                  total += (unsigned long)(hours * 3600000);
              }
-        }
-    }
-    
-    // 2. Future Steps
-    if (activeProfile.stepCount > 0) {
-        for (int i = currentStepIndex + 1; i < activeProfile.stepCount; i++) {
-            ProfileStep& step = activeProfile.steps[i];
-            ProfileStep& prev = activeProfile.steps[i-1];
-            
-            if (step.type == RAMP) {
-                if (step.duration > 0) {
-                    total += step.duration * 60000;
-                } else if (step.rate > 0) {
-                    double startT = prev.targetTemperature;
-                    double diff = abs(step.targetTemperature - startT);
-                    double hours = diff / step.rate;
-                    total += (unsigned long)(hours * 3600000);
-                }
-            } else if (step.type == SOAK) {
-                total += step.duration * 60000;
-            } else if (step.type == COOL) {
-                if (step.duration > 0) {
-                    total += step.duration * 60000;
-                } else {
-                    double startT = prev.targetTemperature;
-                    double diff = 0;
-                    if (startT > step.targetTemperature) diff = startT - step.targetTemperature;
-                    double hours = diff / 150.0; // Fallback estimate
-                    total += (unsigned long)(hours * 3600000);
-                }
-            }
+             currentTemp = step.targetTemperature;
         }
     }
     return total;
 }
+
+unsigned long estimateTimeRemaining() {
+    if (activeProfile.stepCount == 0 || currentState == IDLE || currentState == COMPLETED) return 0;
+    
+    long runElapsed = millis() - profileStartTime;
+    long theoreticalRemaining = totalProfileDuration - runElapsed;
+    
+    if (theoreticalRemaining < 0) return 0;
+    return theoreticalRemaining;
+}
+
 
 void reportStatus(bool force) {
     if (force || (millis() - lastReportTime > REPORT_INTERVAL)) {
