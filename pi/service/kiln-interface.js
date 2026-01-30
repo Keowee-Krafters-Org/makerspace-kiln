@@ -130,6 +130,7 @@ class KilnInterface {
      * @param {Object} profile - Full profile object with steps
      */
     setProfile(profile) {
+        console.log('Setting profile:', JSON.stringify(profile, null, 2)); // Debug logging
         // Transform service profile format to Arduino command format if needed
         // Service: { steps: [{ number, targetTemperature, duration, rate, type/mode, initialSetpoint }] }
         // Arduino expects: { command: "profile", id: 1, name: "foo", steps: [...] }
@@ -139,7 +140,7 @@ class KilnInterface {
             id: profile.id,
             name: profile.name,
             steps: profile.steps.map(s => ({
-                type: s.type || s.mode, // RAMP, SOAK, COOL...
+                type: s.type || s.mode || 'IDLE', // RAMP, SOAK, COOL...
                 targetTemperature: s.targetTemperature,
                 duration: s.duration, // minutes
                 rate: s.rate // degrees/hour

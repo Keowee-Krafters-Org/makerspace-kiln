@@ -70,6 +70,19 @@ const statusIcon = computed(() => {
   return map[status.value.state] || '❓';
 });
 
+const statusDescription = computed(() => {
+  const s = status.value;
+  // If passive state, show simple state name
+  if (['IDLE', 'COMPLETED', 'ABORTED', 'EMERGENCY_STOP', 'ERROR', 'UNKNOWN'].includes(s.state)) {
+    return s.state;
+  }
+  // If active sequence
+  if (s.currentStep && s.totalSteps) {
+    return `Step ${s.currentStep} / ${s.totalSteps}`;
+  }
+  return s.state;
+});
+
 const startKiln = async () => {
     if (!selectedProfileId.value) {
         message.value = 'Please select a profile first';
@@ -140,7 +153,7 @@ onUnmounted(() => {
           <div class="status-label">STATUS</div>
           <div class="status-content">
             <span class="status-icon">{{ statusIcon }}</span>
-            <span class="status-text">{{ status.state }}</span>
+            <span class="status-text">{{ statusDescription }}</span>
           </div>
         </div>
         <div class="countdown-timer">

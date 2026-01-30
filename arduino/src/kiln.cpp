@@ -104,7 +104,7 @@ void loop() {
     }
 
     // 4. PID & Output
-    if (currentState == RAMP || currentState == SOAK) {
+    if (currentState == RAMP || currentState == SOAK || currentState == COOL) {
         // Window Rollover
         if (now - windowStartTime > PID_WINDOW_SIZE) {
             windowStartTime += PID_WINDOW_SIZE;
@@ -311,6 +311,14 @@ void reportStatus(bool force) {
         doc["totalSteps"] = activeProfile.stepCount;
         doc["input"] = input;
         doc["setpoint"] = setpoint;
+        
+        // Add targetTemperature from current step
+        if (activeProfile.stepCount > 0 && currentStepIndex < activeProfile.stepCount) {
+             doc["targetTemperature"] = activeProfile.steps[currentStepIndex].targetTemperature;
+        } else {
+             doc["targetTemperature"] = 0;
+        }
+        
         doc["output"] = output;
         doc["isSimulated"] = isSimulated;
         
