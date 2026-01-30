@@ -10,37 +10,43 @@
 #   usbipd list
 # Then extract the busid of the desired device to share.
 
-# Search for devices (case-insensitive) to find Arduino or USB-Serial
-export USB_DEVICES=$(usbipd list | grep -iE "USB|Arduino")
-
-if [ "$1" == "detach-all" ]; then
-    echo "Checking for attached devices..."
-    # Find all busids with state 'Attached'
-    ATTACHED_IDS=$(usbipd list | grep "Attached" | awk '{print $1}')
-    
-    if [ -z "$ATTACHED_IDS" ]; then
-        echo "No attached devices found."
-    else
-        for id in $ATTACHED_IDS; do
-            echo "Detaching busid: $id"
-            usbipd detach --busid "$id"
-        done
-    fi
-    exit 0
-fi
-
-# Extract the busid of the first relevant device found
-USB_BUSID=$(echo "$USB_DEVICES" | head -n 1 | awk '{print $1}')
-
-# use the optional PORT argument if provided or a default value
-PORT=${2:-$USB_BUSID}
-echo "Using busid: $PORT"
 if [ "$1" == "on" ]; then
+    # Wait for device to enumerate (addressing race condition after upload)
+    echo "Waiting for device to appear..."
+    for i in {1..10}; do
+        # Refresh listing
+        USB_DEVICES=$(usbipd list | grep -iE "USB|Arduino")
+        
+        # Try to find a valid BusID (digits-digits) to avoid matching UUIDs/Hubs if the device isn't ready
+        # We look for lines starting with a standard BusID pattern (e.g., 1-1)
+        USB_BUSID=$(echo "$USB_DEVICES" | grep -E "^[0-9]+-[0-9]+" | head -n 1 | awk '{print $1}')
+        
+        if [ -n "$USB_BUSID" ]; then
+            break
+        fi
+        sleep 1
+    done
+
+    if [ -z "$USB_BUSID" ]; then
+        echo "Error: Could not find relevant USB/Arduino device after waiting."
+        usbipd list
+        exit 1
+    fi
+
+    # use the optional PORT argument if provided or a default value
+    PORT=${2:-$USB_BUSID}
+    echo "Using busid: $PORT"
+
     # try the bind command first to ensure the device is available
     usbipd bind --busid $PORT
     usbipd attach --wsl --busid $PORT
     echo "WSL USB sharing enabled."
 elif [ "$1" == "off" ]; then
+    # For off command, we can just grab what's there currently
+    USB_DEVICES=$(usbipd list | grep -iE "USB|Arduino")
+    USB_BUSID=$(echo "$USB_DEVICES" | head -n 1 | awk '{print $1}')
+    PORT=${2:-$USB_BUSID}
+
     if [ -n "$PORT" ]; then
         usbipd detach --busid $PORT
         echo "WSL USB sharing disabled for $PORT."
