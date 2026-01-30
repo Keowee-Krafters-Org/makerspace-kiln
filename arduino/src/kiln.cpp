@@ -165,8 +165,10 @@ void runProfileLogic() {
             if (step.targetTemperature > step.initialSetpoint) {
                 // Heating up
                 setpoint = step.initialSetpoint + delta;
-                if (setpoint >= step.targetTemperature) {
-                    setpoint = step.targetTemperature;
+                if (setpoint >= step.targetTemperature) setpoint = step.targetTemperature;
+                
+                // Wait for setpoint AND input to reach target
+                if (setpoint >= step.targetTemperature && input >= step.targetTemperature) {
                     currentStepIndex++;
                     stepStartTime = millis();
                     if (currentStepIndex < activeProfile.stepCount) {
@@ -177,8 +179,10 @@ void runProfileLogic() {
             } else {
                 // Cooling down (controlled)
                 setpoint = step.initialSetpoint - delta;
-                if (setpoint <= step.targetTemperature) {
-                    setpoint = step.targetTemperature;
+                if (setpoint <= step.targetTemperature) setpoint = step.targetTemperature;
+                
+                // Wait for setpoint AND input to reach target
+                if (setpoint <= step.targetTemperature && input <= step.targetTemperature) {
                     currentStepIndex++;
                     stepStartTime = millis();
                     if (currentStepIndex < activeProfile.stepCount) {
@@ -190,11 +194,22 @@ void runProfileLogic() {
         } else {
              // Zero rate or duration (instant jump)
              setpoint = step.targetTemperature;
-             currentStepIndex++;
-             stepStartTime = millis();
-             if (currentStepIndex < activeProfile.stepCount) {
-                 activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
-                 currentState = activeProfile.steps[currentStepIndex].type;
+             
+             bool ready = false;
+             if (step.targetTemperature > step.initialSetpoint) {
+                 if (input >= step.targetTemperature) ready = true;
+             } else {
+                 if (input <= step.targetTemperature) ready = true;
+             }
+             
+             // Wait for input to reach target
+             if (ready) {
+                 currentStepIndex++;
+                 stepStartTime = millis();
+                 if (currentStepIndex < activeProfile.stepCount) {
+                     activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
+                     currentState = activeProfile.steps[currentStepIndex].type;
+                 }
              }
         }
     } else if (step.type == SOAK) {
