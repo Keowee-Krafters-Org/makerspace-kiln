@@ -30,7 +30,7 @@ const profile = ref({
 
 const testParams = ref({
   temperature: 25,
-  duration: 5,
+  duration: 120,
   setPoint: 25
 })
 

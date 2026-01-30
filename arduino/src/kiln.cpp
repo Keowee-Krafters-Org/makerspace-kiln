@@ -267,7 +267,12 @@ void handleCommand(JsonDocument& doc) {
         isSimulated = true;
         simulationStartTime = millis();
         
-        unsigned long dur = doc["duration"] | 1;
+        // Default to 120 minutes if duration is not provided
+        unsigned long dur = 120;
+        if (doc["duration"].is<unsigned long>()) {
+             dur = doc["duration"];
+             if (dur == 0) dur = 120;
+        }
         simulationTimeout = dur * 60000;
 
         if (doc["setPoint"].is<double>()) {
