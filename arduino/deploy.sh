@@ -18,7 +18,7 @@ if [ "$ENVIRONMENT_TYPE" == "wsl" ]; then
     git pull
 
     echo "Detaching from WSL..."
-    ./wslShare.sh detach
+    ./wslShare.sh off
 fi
 
 echo "Building and uploading firmware..."
