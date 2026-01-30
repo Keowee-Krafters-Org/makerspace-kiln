@@ -184,9 +184,9 @@ kiln.onStatus((data) => {
     });
 
     // This is where you would hook in the Google AppScript Cloud API communication
-    // For now, we will pretty-print the status to the console
+    // For now, we will log the raw JSON status to the console
     if (data.state) {
-        console.log(`[STATUS] State: ${data.state} | Temp: ${data.input?.toFixed(1)}°C | Setpoint: ${data.setpoint?.toFixed(1)}°C`);
+        console.log('[STATUS]', JSON.stringify(data));
     } else if (data.message) {
         console.log(`[MSG] ${data.message}`);
     } else {
