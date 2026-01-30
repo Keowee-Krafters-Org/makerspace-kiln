@@ -39,8 +39,6 @@ unsigned long windowStartTime;
 unsigned long stepStartTime = 0;
 unsigned long profileStartTime = 0;
 unsigned long lastReportTime = 0;
-unsigned long stepStartTime = 0;
-unsigned long lastReportTime = 0;
 const unsigned long REPORT_INTERVAL = 2000;
 
 // LED
