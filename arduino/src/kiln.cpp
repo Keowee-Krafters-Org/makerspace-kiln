@@ -303,6 +303,52 @@ const char* stateToString(KilnState s) {
     }
 }
 
+unsigned long estimateTimeRemaining() {
+    unsigned long total = 0;
+    
+    // 1. Current Step Remaining
+    if (activeProfile.stepCount > 0 && currentStepIndex < activeProfile.stepCount) {
+        ProfileStep& step = activeProfile.steps[currentStepIndex];
+        unsigned long elapsed = millis() - stepStartTime;
+        
+        if (step.type == RAMP) {
+             if (step.rate > 0) {
+                 double diff = abs(step.targetTemperature - setpoint);
+                 double hours = diff / step.rate;
+                 total += (unsigned long)(hours * 3600000);
+             } else if (step.duration > 0) {
+                 unsigned long durMs = step.duration * 60000;
+                 if (durMs > elapsed) total += (durMs - elapsed);
+             }
+        } else if (step.type == SOAK) {
+             unsigned long durMs = step.duration * 60000;
+             if (durMs > elapsed) total += (durMs - elapsed);
+        }
+    }
+    
+    // 2. Future Steps
+    if (activeProfile.stepCount > 0) {
+        for (int i = currentStepIndex + 1; i < activeProfile.stepCount; i++) {
+            ProfileStep& step = activeProfile.steps[i];
+            ProfileStep& prev = activeProfile.steps[i-1];
+            
+            if (step.type == RAMP) {
+                if (step.rate > 0) {
+                    double startT = prev.targetTemperature;
+                    double diff = abs(step.targetTemperature - startT);
+                    double hours = diff / step.rate;
+                    total += (unsigned long)(hours * 3600000);
+                } else if (step.duration > 0) {
+                    total += step.duration * 60000;
+                }
+            } else if (step.type == SOAK) {
+                total += step.duration * 60000;
+            }
+        }
+    }
+    return total;
+}
+
 void reportStatus(bool force) {
     if (force || (millis() - lastReportTime > REPORT_INTERVAL)) {
         lastReportTime = millis();
@@ -321,6 +367,7 @@ void reportStatus(bool force) {
              doc["targetTemperature"] = 0;
         }
         
+        doc["timeRemaining"] = estimateTimeRemaining();
         doc["output"] = output;
         doc["ssrUpper"] = digitalRead(SSR_PIN_UPPER) == HIGH;
         doc["ssrLower"] = digitalRead(SSR_PIN_LOWER) == HIGH;
