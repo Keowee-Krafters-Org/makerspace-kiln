@@ -345,6 +345,18 @@ unsigned long estimateTimeRemaining() {
         } else if (step.type == SOAK) {
              unsigned long durMs = step.duration * 60000;
              if (durMs > elapsed) total += (durMs - elapsed);
+        } else if (step.type == COOL) {
+             // For Natural Cool, we can only estimate if a duration or rate is provided as a hint
+             if (step.duration > 0) {
+                 unsigned long durMs = step.duration * 60000;
+                 if (durMs > elapsed) total += (durMs - elapsed);
+             } else {
+                 // Fallback: Assume 150 deg/hr cooling rate for estimation if nothing else known
+                 double diff = 0;
+                 if (input > step.targetTemperature) diff = input - step.targetTemperature;
+                 double hours = diff / 150.0;
+                 total += (unsigned long)(hours * 3600000);
+             }
         }
     }
     
@@ -365,6 +377,16 @@ unsigned long estimateTimeRemaining() {
                 }
             } else if (step.type == SOAK) {
                 total += step.duration * 60000;
+            } else if (step.type == COOL) {
+                if (step.duration > 0) {
+                    total += step.duration * 60000;
+                } else {
+                    double startT = prev.targetTemperature;
+                    double diff = 0;
+                    if (startT > step.targetTemperature) diff = startT - step.targetTemperature;
+                    double hours = diff / 150.0; // Fallback estimate
+                    total += (unsigned long)(hours * 3600000);
+                }
             }
         }
     }
