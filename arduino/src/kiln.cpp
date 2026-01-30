@@ -144,34 +144,54 @@ void runProfileLogic() {
     unsigned long elapsed = millis() - stepStartTime;
 
     if (step.type == RAMP) {
-        // Rate is deg/hr
-        double durationHours = elapsed / 3600000.0;
-        double delta = step.rate * durationHours;
-        
-        if (step.targetTemperature > step.initialSetpoint) {
-            // Heating up
-            setpoint = step.initialSetpoint + delta;
-            if (setpoint >= step.targetTemperature) {
-                setpoint = step.targetTemperature;
-                currentStepIndex++;
-                stepStartTime = millis();
-                if (currentStepIndex < activeProfile.stepCount) {
-                    activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
-                    currentState = activeProfile.steps[currentStepIndex].type;
+        // Option 1: Rate-based RAMP (deg/hr)
+        if (step.rate > 0) {
+            double durationHours = elapsed / 3600000.0;
+            double delta = step.rate * durationHours;
+            
+            if (step.targetTemperature > step.initialSetpoint) {
+                // Heating up
+                setpoint = step.initialSetpoint + delta;
+                if (setpoint >= step.targetTemperature) {
+                    setpoint = step.targetTemperature;
+                    currentStepIndex++;
+                    stepStartTime = millis();
+                    if (currentStepIndex < activeProfile.stepCount) {
+                        activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
+                        currentState = activeProfile.steps[currentStepIndex].type;
+                    }
+                }
+            } else {
+                // Cooling down (controlled)
+                setpoint = step.initialSetpoint - delta;
+                if (setpoint <= step.targetTemperature) {
+                    setpoint = step.targetTemperature;
+                    currentStepIndex++;
+                    stepStartTime = millis();
+                    if (currentStepIndex < activeProfile.stepCount) {
+                        activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
+                        currentState = activeProfile.steps[currentStepIndex].type;
+                    }
                 }
             }
-        } else {
-            // Cooling down (controlled)
-            setpoint = step.initialSetpoint - delta;
-            if (setpoint <= step.targetTemperature) {
-                setpoint = step.targetTemperature;
-                currentStepIndex++;
-                stepStartTime = millis();
-                if (currentStepIndex < activeProfile.stepCount) {
-                    activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
-                    currentState = activeProfile.steps[currentStepIndex].type;
-                }
-            }
+        }
+        // Option 2: Duration-based RAMP (minutes)
+        else if (step.duration > 0) {
+             unsigned long durationMs = step.duration * 60000;
+             if (elapsed >= durationMs) {
+                 // Finished
+                 setpoint = step.targetTemperature;
+                 currentStepIndex++;
+                 stepStartTime = millis();
+                 if (currentStepIndex < activeProfile.stepCount) {
+                     activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
+                     currentState = activeProfile.steps[currentStepIndex].type;
+                 }
+             } else {
+                 // Interpolate
+                 double progress = (double)elapsed / (double)durationMs;
+                 setpoint = step.initialSetpoint + ((step.targetTemperature - step.initialSetpoint) * progress);
+             }
         }
     } else if (step.type == SOAK) {
         setpoint = step.targetTemperature;

@@ -131,13 +131,15 @@ class KilnInterface {
      */
     setProfile(profile) {
         // Transform service profile format to Arduino command format if needed
-        // Service: { steps: [{ number, targetTemperature, duration, rate, mode, initialSetpoint }] }
-        // Arduino expects: { command: "profile", steps: [...] }
+        // Service: { steps: [{ number, targetTemperature, duration, rate, type/mode, initialSetpoint }] }
+        // Arduino expects: { command: "profile", id: 1, name: "foo", steps: [...] }
         
         const cmd = {
             command: 'profile',
+            id: profile.id,
+            name: profile.name,
             steps: profile.steps.map(s => ({
-                type: s.mode, // RAMP, SOAK, COOL...
+                type: s.type || s.mode, // RAMP, SOAK, COOL...
                 targetTemperature: s.targetTemperature,
                 duration: s.duration, // minutes
                 rate: s.rate // degrees/hour

@@ -1,2 +1,7 @@
 pi/kiln-release.tar.gz
 pi/stage/
+pi/client/dist/
+pi/client/node_modules/
+pi/service/node_modules/
+pi/service/db.json
+pi/kiln-release.tar.gz

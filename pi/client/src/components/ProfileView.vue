@@ -155,17 +155,28 @@ const cancel = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #333;
+  background-color: #252525;
+  border: 1px solid #333;
   padding: 15px;
   margin-bottom: 10px;
   border-radius: 8px;
+  transition: background-color 0.2s;
+}
+.profile-item:hover {
+  background-color: #3a3a3a;
+}
+.profile-item .name {
+  font-weight: bold;
+  color: #4cc9f0;
+  font-size: 1.1em;
 }
 .profile-name-input {
   font-size: 1.5em;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid #666;
-  color: white;
+  background-color: #333;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: #ffffff;
   width: 60%;
 }
 .steps-container {
@@ -223,7 +234,10 @@ const cancel = () => {
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: #333;
+  background: #252525;
+  border: 1px solid #4cc9f0;
+  color: #4cc9f0;
+  font-weight: bold;
   padding: 10px 20px;
   border-radius: 20px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.5);
