@@ -21,7 +21,9 @@ Profile activeProfile;
 int currentStepIndex = 0;
 
 double setpoint = 0, input = 0, output = 0;
-double Kp=2, Ki=0.5, Kd=2;
+// Tuning for seconds-based window output (0-10000ms)
+// Kp=1000 means 10 degrees error gives 10000ms output (Full ON)
+double Kp=1000, Ki=10, Kd=100;
 PID kilnPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 Adafruit_MAX31855 thermocouple(CLK, CS, DO);
 
@@ -262,10 +264,10 @@ void handleCommand(JsonDocument& doc) {
         simulatedInput = doc["temperature"];
         isSimulated = true;
         simulationStartTime = millis();
-        simulationTimeout = 60000; 
-        if (doc["duration"].is<unsigned long>()) {
-            simulationTimeout = (unsigned long)doc["duration"] * 60000;
-        }
+        
+        unsigned long dur = doc["duration"] | 1;
+        simulationTimeout = dur * 60000;
+
         if (doc["setPoint"].is<double>()) {
             setpoint = doc["setPoint"];
         }
