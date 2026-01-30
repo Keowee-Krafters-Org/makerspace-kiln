@@ -243,10 +243,10 @@ void handleCommand(JsonDocument& doc) {
         isSimulated = true;
         simulationStartTime = millis();
         simulationTimeout = 60000; 
-        if (doc.containsKey("duration")) {
+        if (doc["duration"].is<unsigned long>()) {
             simulationTimeout = (unsigned long)doc["duration"] * 60000;
         }
-        if (doc.containsKey("setPoint")) {
+        if (doc["setPoint"].is<double>()) {
             setpoint = doc["setPoint"];
         }
         response["message"] = "Simulating";
