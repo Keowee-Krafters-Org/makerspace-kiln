@@ -139,6 +139,15 @@ void forceStop() {
     digitalWrite(SSR_PIN_LOWER, LOW);
 }
 
+void advanceToNextStep(double nextInitialSetpoint) {
+    currentStepIndex++;
+    stepStartTime = millis();
+    if (currentStepIndex < activeProfile.stepCount) {
+        activeProfile.steps[currentStepIndex].initialSetpoint = nextInitialSetpoint;
+        currentState = activeProfile.steps[currentStepIndex].type;
+    }
+}
+
 void runProfileLogic() {
     if (currentStepIndex >= activeProfile.stepCount) {
         currentState = COMPLETED;
@@ -147,94 +156,77 @@ void runProfileLogic() {
 
     ProfileStep& step = activeProfile.steps[currentStepIndex];
     unsigned long elapsed = millis() - stepStartTime;
+    bool stepComplete = false;
+    double nextInitial = setpoint; 
 
-    if (step.type == RAMP) {
+    if (step.type == SOAK) {
+        setpoint = step.targetTemperature;
+        if (elapsed >= (unsigned long)step.duration * 60000) {
+            stepComplete = true;
+            nextInitial = setpoint;
+        }
+    } else {
+        // Shared logic for RAMP and COOL
         double effectiveRate = 0.0;
         
-        // Priority: Duration > Rate
+        // 1. Determine Effective Rate
         if (step.duration > 0) {
-             double hours = step.duration / 60.0;
-             if (hours > 0) {
-                 effectiveRate = abs(step.targetTemperature - step.initialSetpoint) / hours;
-             }
+            double hours = step.duration / 60.0;
+            if (hours > 0) {
+                effectiveRate = abs(step.targetTemperature - step.initialSetpoint) / hours;
+            }
         } else if (step.rate > 0) {
             effectiveRate = step.rate;
         }
-        
-        if (effectiveRate > 0) {
-            double durationHours = elapsed / 3600000.0;
-            double delta = effectiveRate * durationHours;
-            
-            if (step.targetTemperature > step.initialSetpoint) {
-                // Heating up
-                setpoint = step.initialSetpoint + delta;
-                if (setpoint >= step.targetTemperature) setpoint = step.targetTemperature;
-                
-                // Wait for setpoint AND input to reach target
-                if (setpoint >= step.targetTemperature && input >= step.targetTemperature) {
-                    currentStepIndex++;
-                    stepStartTime = millis();
-                    if (currentStepIndex < activeProfile.stepCount) {
-                        activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
-                        currentState = activeProfile.steps[currentStepIndex].type;
-                    }
-                }
-            } else {
-                // Cooling down (controlled)
-                setpoint = step.initialSetpoint - delta;
-                if (setpoint <= step.targetTemperature) setpoint = step.targetTemperature;
-                
-                // Wait for setpoint AND input to reach target
-                if (setpoint <= step.targetTemperature && input <= step.targetTemperature) {
-                    currentStepIndex++;
-                    stepStartTime = millis();
-                    if (currentStepIndex < activeProfile.stepCount) {
-                        activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
-                        currentState = activeProfile.steps[currentStepIndex].type;
-                    }
-                }
+
+        // 2. Handle Natural Cool (Specific Case: COOL with no Rate/Duration)
+        if (step.type == COOL && effectiveRate <= 0) {
+            setpoint = 0;
+            if (input <= step.targetTemperature) {
+                stepComplete = true;
+                nextInitial = input; // Start next step from actual temp (since setpoint was 0)
             }
         } else {
-             // Zero rate or duration (instant jump)
-             setpoint = step.targetTemperature;
-             
-             bool ready = false;
-             if (step.targetTemperature > step.initialSetpoint) {
-                 if (input >= step.targetTemperature) ready = true;
-             } else {
-                 if (input <= step.targetTemperature) ready = true;
-             }
-             
-             // Wait for input to reach target
-             if (ready) {
-                 currentStepIndex++;
-                 stepStartTime = millis();
-                 if (currentStepIndex < activeProfile.stepCount) {
-                     activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
-                     currentState = activeProfile.steps[currentStepIndex].type;
-                 }
-             }
-        }
-    } else if (step.type == SOAK) {
-        setpoint = step.targetTemperature;
-        if (elapsed >= (step.duration * 60000)) {
-            currentStepIndex++;
-            stepStartTime = millis();
-            if (currentStepIndex < activeProfile.stepCount) {
-                activeProfile.steps[currentStepIndex].initialSetpoint = setpoint;
-                currentState = activeProfile.steps[currentStepIndex].type;
+            // 3. Handle Controlled RAMP/COOL or Instant Jump
+            if (effectiveRate > 0) {
+                double durationHours = elapsed / 3600000.0;
+                double delta = effectiveRate * durationHours;
+                
+                if (step.targetTemperature >= step.initialSetpoint) {
+                    setpoint = step.initialSetpoint + delta;
+                    if (setpoint > step.targetTemperature) setpoint = step.targetTemperature;
+                } else {
+                    setpoint = step.initialSetpoint - delta;
+                    if (setpoint < step.targetTemperature) setpoint = step.targetTemperature;
+                }
+            } else {
+                // Instant Jump (RAMP with rate/dur 0)
+                setpoint = step.targetTemperature;
+            }
+
+            // 4. Check for Completion (Wait for Reach)
+            bool targetReached = false;
+            bool inputReached = false;
+            
+            if (step.targetTemperature >= step.initialSetpoint) {
+                // Direction: UP
+                if (setpoint >= step.targetTemperature) targetReached = true;
+                if (input >= step.targetTemperature) inputReached = true;
+            } else {
+                // Direction: DOWN
+                if (setpoint <= step.targetTemperature) targetReached = true;
+                if (input <= step.targetTemperature) inputReached = true;
+            }
+            
+            if (targetReached && inputReached) {
+                stepComplete = true;
+                nextInitial = setpoint;
             }
         }
-    } else if (step.type == COOL) {
-        setpoint = 0; // Natural cool
-        if (input <= step.targetTemperature) {
-            currentStepIndex++;
-            stepStartTime = millis();
-            if (currentStepIndex < activeProfile.stepCount) {
-                activeProfile.steps[currentStepIndex].initialSetpoint = input;
-                currentState = activeProfile.steps[currentStepIndex].type;
-            }
-        }
+    }
+
+    if (stepComplete) {
+        advanceToNextStep(nextInitial);
     }
 }
 

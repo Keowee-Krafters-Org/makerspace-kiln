@@ -18,6 +18,7 @@ const kiln = new KilnInterface(config.serialPort, config.baudRate);
 const app = express();
 let latestStatus = { state: 'UNKNOWN', timestamp: 0 };
 let clients = [];
+let currentSessionId = null;
 
 // Middleware
 app.use(cors());
@@ -116,12 +117,30 @@ app.post('/api/start', async (req, res) => {
     }
 
     kiln.start();
+    
+    // Create new history session
+    try {
+        const session = await kilnDatabase.createSession();
+        currentSessionId = session.id;
+        console.log(`Started new session: ${currentSessionId}`);
+    } catch (err) {
+        console.error('Failed to create history session:', err);
+    }
+    
     res.json({ success: true, message: 'Start command sent' });
 });
 
 // POST /api/stop - Stop the kiln
-app.post('/api/stop', (req, res) => {
+app.post('/api/stop', async (req, res) => {
     kiln.stop();
+    
+    // End history session
+    if (currentSessionId) {
+        await kilnDatabase.endSession(currentSessionId, 'ABORTED');
+        console.log(`Ended session ${currentSessionId}: ABORTED`);
+        currentSessionId = null;
+    }
+    
     res.json({ success: true, message: 'Stop command sent' });
 });
 
@@ -175,13 +194,32 @@ app.post('/api/test/temp', (req, res) => {
 });
 
 // Handle incoming status messages from the Kiln
-kiln.onStatus((data) => {
+kiln.onStatus(async (data) => {
     latestStatus = { ...data, timestamp: Date.now() };
 
     // Broadcast status to connected SSE clients
     clients.forEach(client => {
         client.res.write(`data: ${JSON.stringify(latestStatus)}\n\n`);
     });
+
+    // Record history if in a session
+    if (currentSessionId && (data.state === 'RAMP' || data.state === 'SOAK' || data.state === 'COOL')) {
+        try {
+            await kilnDatabase.addSessionEvent(currentSessionId, data);
+        } catch (err) {
+            console.error('Error saving session event:', err);
+        }
+    } else if (currentSessionId && (data.state === 'COMPLETED' || data.state === 'ABORTED' || data.state === 'EMERGENCY_STOP')) {
+        // Automatically close session if the kiln reports it's done
+        try {
+            await kilnDatabase.addSessionEvent(currentSessionId, data); // Capture final state
+            await kilnDatabase.endSession(currentSessionId, data.state);
+            console.log(`Session ${currentSessionId} completed via status update: ${data.state}`);
+            currentSessionId = null;
+        } catch (err) {
+            console.error('Error closing session:', err);
+        }
+    }
 
     // This is where you would hook in the Google AppScript Cloud API communication
     // For now, we will log the raw JSON status to the console
