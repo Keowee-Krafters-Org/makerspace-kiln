@@ -156,6 +156,17 @@ onUnmounted(() => {
             <span class="status-text">{{ statusDescription }}</span>
           </div>
         </div>
+        
+        <div class="header-controls">
+           <select v-model="selectedProfileId" class="header-select">
+                <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+            <div class="header-buttons">
+                <button @click="startKiln" class="start-btn-sm">START</button>
+                <button @click="stopKiln" class="stop-btn-sm">STOP</button>
+            </div>
+        </div>
+
         <div class="countdown-timer">
           <span class="label">Time Remaining</span>
           <span class="value">{{ countdown }}</span>
@@ -181,30 +192,15 @@ onUnmounted(() => {
       </div>
       <p v-if="isStale" class="warning">Status is stale. (Last update: {{ new Date(status.timestamp).toLocaleTimeString() }})</p>
       <p v-if="isSimulated" class="simulation-warning">SIMULATION MODE ACTIVE</p>
-    </div>
-
-    <div v-if="message" class="message">{{ message }}</div>
-
-    <div class="controls-grid">
-      <div class="card control-panel">
-        <h3>Controls</h3>
-        <div class="profile-selector">
-            <label>Select Profile:</label>
-            <select v-model="selectedProfileId">
-                <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
-            </select>
-        </div>
-        <div class="buttons">
-          <button @click="startKiln" class="start-btn">START</button>
-          <button @click="stopKiln" class="stop-btn">STOP</button>
-        </div>
-      </div>
+      
       <TestTempControl 
         v-if="isSimulated" 
         :temperature="testParams.temperature"
         @update:temperature="handleTempUpdate"
       />
     </div>
+
+    <div v-if="message" class="message">{{ message }}</div>
   </div>
 </template>
 
@@ -380,6 +376,49 @@ onUnmounted(() => {
   padding: 8px;
   box-sizing: border-box;
 }
+
+/* Header Controls */
+.header-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+.header-select {
+    background: #333;
+    color: white;
+    border: 1px solid #555;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    min-width: 150px;
+}
+.header-buttons {
+    display: flex;
+    gap: 10px;
+}
+.start-btn-sm, .stop-btn-sm {
+    padding: 5px 15px;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    color: white;
+    font-size: 0.9em;
+}
+.start-btn-sm {
+    background-color: #2da44e;
+}
+.start-btn-sm:hover {
+    background-color: #2c974b;
+}
+.stop-btn-sm {
+    background-color: #cf222e;
+}
+.stop-btn-sm:hover {
+    background-color: #a41c28;
+}
+
 
 /* Responsive Design Updates */
 @media (min-width: 600px) {

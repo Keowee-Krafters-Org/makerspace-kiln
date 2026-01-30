@@ -284,16 +284,24 @@ void handleCommand(JsonDocument& doc) {
     }
     else if (strcmp(cmd, "testInput") == 0) {
         simulatedInput = doc["temperature"];
-        isSimulated = true;
-        simulationStartTime = millis();
         
-        // Default to 120 minutes if duration is not provided
-        unsigned long dur = doc["duration"] | 120;
-        if (dur == 0) dur = 120;
+        bool wasSimulated = isSimulated;
+        isSimulated = true;
+        
+        // Only reset timer if duration is explicitly provided or if starting from stopped state
+        if (doc.containsKey("duration")) {
+            simulationStartTime = millis();
+            unsigned long dur = doc["duration"];
+            if (dur == 0) dur = 120;
+            simulationTimeout = dur * 60000;
+        } else if (!wasSimulated) {
+            // Implicit start with default duration
+            simulationStartTime = millis();
+            simulationTimeout = 120 * 60000;
+        }
+        // If running and no duration provided, preserve existing timeout
 
-        simulationTimeout = dur * 60000;
-
-        if (!doc["setPoint"].isNull()) {
+        if (doc.containsKey("setPoint")) {
             setpoint = doc["setPoint"];
         }
         response["message"] = "Simulating";
