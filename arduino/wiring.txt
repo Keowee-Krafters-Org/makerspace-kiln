@@ -1,0 +1,64 @@
+# Kiln Controller Wiring (Text Version)
+
+## Pin Connections
+
+### MAX31855 Thermocouple Amplifier
+TinyDuino SAMD (Host)    <-->    Adafruit MAX31855 Breakout
+-------------------------------------------------------
+GND                      <-->    GND
+VCC (3.3V or 5V)         <-->    Vin
+Pin 5                    <-->    CLK
+Pin 4                    <-->    CS
+Pin 3                    <-->    DO
+
+### Thermocouple
+Thermocouple (Type K)    <-->    MAX31855 Terminal Block
+-------------------------------------------------------
+Yellow Wire (+)          <-->    +
+Red Wire (-)             <-->    -
+
+### Solid State Relays (SSRs)
+TinyDuino SAMD (Host)    <-->    SSR Control Terminals
+-------------------------------------------------------
+Pin 6                    <-->    Upper SSR Control (+)
+Pin 7                    <-->    Lower SSR Control (+)
+GND                      <-->    SSR Control (-) (Both)
+
+
+## Schematic Diagram
+
+       TinyDuino SAMD                   Adafruit MAX31855
+    +------------------+              +-------------------+
+    |                  |              |                   |
+    |            Pin 3 +--------------+ DO                |
+    |                  |              |                   |
+    |            Pin 4 +--------------+ CS                |
+    |                  |              |                   |
+    |            Pin 5 +--------------+ CLK               |
+    |                  |              |                   |
+    |              VCC +--------------+ Vin               |
+    |                  |              |                   |
+    |              GND +---+----------+ GND               |
+    |                  |   |          |                   |
+    |                  |   |          |          Term +   +---- Yellow Wire (TC +)
+    |                  |   |          |                   |
+    |            Pin 6 +---|----------|----------|        |
+    |                  |   |          |          Term -   +---- Red  Wire (TC -)
+    |            Pin 7 +---|---|      |                   |
+    +------------------+   |   |      +-------------------+
+                           |   |
+                           |   |        Upper SSR
+                           |   |      +-----------+
+                           |   +------+ Control + |
+                           |          |           |
+                           +----------+ Control - |
+                           |          +-----------+
+                           |
+                           |            Lower SSR
+                           |          +-----------+
+                           +----------+ Control + |
+                                      |           |
+                           +----------+ Control - |
+                           |          +-----------+
+                           |
+                          GND

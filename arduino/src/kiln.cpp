@@ -317,22 +317,26 @@ void handleCommand(JsonDocument& doc) {
 
 KilnState parseStateString(const char* str) {
     if (!str) return IDLE;
-    if (strcmp(str, "RAMP") == 0) return RAMP;
-    if (strcmp(str, "SOAK") == 0) return SOAK;
-    if (strcmp(str, "COOL") == 0) return COOL;
+    // Support both uppercase and lowercase for robustness
+    if (strcmp(str, "PREHEAT") == 0 || strcmp(str, "preheat") == 0) return PREHEAT;
+    if (strcmp(str, "RAMP") == 0 || strcmp(str, "ramp") == 0) return RAMP;
+    if (strcmp(str, "SOAK") == 0 || strcmp(str, "soak") == 0) return SOAK;
+    if (strcmp(str, "COOL") == 0 || strcmp(str, "cool") == 0) return COOL;
     return IDLE;
 }
 
 const char* stateToString(KilnState s) {
     switch(s) {
-        case IDLE: return "IDLE";
-        case RAMP: return "RAMP";
-        case SOAK: return "SOAK";
-        case COOL: return "COOL";
-        case COMPLETED: return "COMPLETED";
-        case ABORTED: return "ABORTED";
-        case EMERGENCY_STOP: return "EMERGENCY_STOP";
-        default: return "UNKNOWN";
+        case IDLE: return "idle";
+        case PREHEAT: return "preheat";
+        case RAMP: return "ramp";
+        case SOAK: return "soak";
+        case COOL: return "cool";
+        case COMPLETED: return "completed";
+        case ABORTED: return "aborted";
+        case EMERGENCY_STOP: return "emergency_stop";
+        case ERROR_STATE: return "error";
+        default: return "unknown";
     }
 }
 
