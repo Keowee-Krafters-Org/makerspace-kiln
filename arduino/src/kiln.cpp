@@ -3,6 +3,7 @@
  * Multi-step profile support
  */
 #include "kiln.h"
+#include "pwmDriver.h"
 
 // --- Hardware Pins ---
 #define DO   3
