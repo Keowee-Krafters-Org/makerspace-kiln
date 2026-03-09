@@ -1,16 +1,16 @@
-import u, { dirname as I } from "path";
-import { fileURLToPath as S } from "url";
-import { Low as D } from "lowdb";
+import f, { dirname as D } from "path";
+import { fileURLToPath as y } from "url";
+import { Low as I } from "lowdb";
 import "node:fs";
-import { writeFile as j, rename as C, readFile as R } from "node:fs/promises";
-import { join as b, dirname as y, basename as N } from "node:path";
-import { fileURLToPath as P } from "node:url";
-import { SerialPort as E } from "serialport";
-import O from "stream";
-import h from "express";
-import $ from "cors";
-const _ = S(import.meta.url), w = u.dirname(_), g = process.env.NODE_ENV === "production", c = {
-  isProduction: g,
+import { writeFile as O, rename as R, readFile as j } from "node:fs/promises";
+import { join as b, dirname as P, basename as C } from "node:path";
+import { fileURLToPath as T } from "node:url";
+import { SerialPort as N } from "serialport";
+import $ from "stream";
+import m from "express";
+import _ from "cors";
+const k = y(import.meta.url), g = f.dirname(k), S = process.env.NODE_ENV === "production", d = {
+  isProduction: S,
   // Serial Port Configuration
   // On Linux/RPi this is often /dev/ttyACM0 or /dev/ttyUSB0
   // On Windows this might be COM3, COM4, etc.
@@ -24,112 +24,112 @@ const _ = S(import.meta.url), w = u.dirname(_), g = process.env.NODE_ENV === "pr
   // Web App Path (Changes based on environment)
   // Production (Pi): './public' (bundled as sibling to index.js)
   // Development Local: '../client/dist' (relative to source index.js)
-  clientPath: g ? u.join(w, "public") : u.join(w, "../client/dist")
+  clientPath: S ? f.join(g, "public") : f.join(g, "../client/dist")
   // Future: Google AppScript Configuration
   // cloudApiUrl: 'https://script.google.com/macros/s/...'
 };
 function x(i) {
-  const t = i instanceof URL ? P(i) : i.toString();
-  return b(y(t), `.${N(t)}.tmp`);
+  const e = i instanceof URL ? T(i) : i.toString();
+  return b(P(e), `.${C(e)}.tmp`);
 }
-async function k(i, t, e) {
-  for (let s = 0; s < t; s++)
+async function A(i, e, t) {
+  for (let s = 0; s < e; s++)
     try {
       return await i();
     } catch (n) {
-      if (s < t - 1)
-        await new Promise((a) => setTimeout(a, e));
+      if (s < e - 1)
+        await new Promise((c) => setTimeout(c, t));
       else
         throw n;
     }
 }
-class F {
-  #t;
+class M {
   #e;
+  #t;
   #s = !1;
   #n = null;
   #o = null;
   #r = null;
   #i = null;
   // File is locked, add data for later
-  #a(t) {
-    return this.#i = t, this.#r ||= new Promise((e, s) => {
-      this.#o = [e, s];
-    }), new Promise((e, s) => {
-      this.#r?.then(e).catch(s);
+  #a(e) {
+    return this.#i = e, this.#r ||= new Promise((t, s) => {
+      this.#o = [t, s];
+    }), new Promise((t, s) => {
+      this.#r?.then(t).catch(s);
     });
   }
   // File isn't locked, write data
-  async #l(t) {
+  async #l(e) {
     this.#s = !0;
     try {
-      await j(this.#e, t, "utf-8"), await k(async () => {
-        await C(this.#e, this.#t);
+      await O(this.#t, e, "utf-8"), await A(async () => {
+        await R(this.#t, this.#e);
       }, 10, 100), this.#n?.[0]();
-    } catch (e) {
-      throw e instanceof Error && this.#n?.[1](e), e;
+    } catch (t) {
+      throw t instanceof Error && this.#n?.[1](t), t;
     } finally {
       if (this.#s = !1, this.#n = this.#o, this.#o = this.#r = null, this.#i !== null) {
-        const e = this.#i;
-        this.#i = null, await this.write(e);
+        const t = this.#i;
+        this.#i = null, await this.write(t);
       }
     }
   }
-  constructor(t) {
-    this.#t = t, this.#e = x(t);
+  constructor(e) {
+    this.#e = e, this.#t = x(e);
   }
-  async write(t) {
-    return this.#s ? this.#a(t) : this.#l(t);
+  async write(e) {
+    return this.#s ? this.#a(e) : this.#l(e);
   }
 }
 class q {
-  #t;
   #e;
-  constructor(t) {
-    this.#t = t, this.#e = new F(t);
+  #t;
+  constructor(e) {
+    this.#e = e, this.#t = new M(e);
   }
   async read() {
-    let t;
+    let e;
     try {
-      t = await R(this.#t, "utf-8");
-    } catch (e) {
-      if (e.code === "ENOENT")
+      e = await j(this.#e, "utf-8");
+    } catch (t) {
+      if (t.code === "ENOENT")
         return null;
-      throw e;
+      throw t;
     }
-    return t;
+    return e;
   }
-  write(t) {
-    return this.#e.write(t);
+  write(e) {
+    return this.#t.write(e);
   }
 }
-class A {
-  #t;
+class B {
   #e;
+  #t;
   #s;
-  constructor(t, { parse: e, stringify: s }) {
-    this.#t = new q(t), this.#e = e, this.#s = s;
+  constructor(e, { parse: t, stringify: s }) {
+    this.#e = new q(e), this.#t = t, this.#s = s;
   }
   async read() {
-    const t = await this.#t.read();
-    return t === null ? null : this.#e(t);
+    const e = await this.#e.read();
+    return e === null ? null : this.#t(e);
   }
-  write(t) {
-    return this.#t.write(this.#s(t));
+  write(e) {
+    return this.#e.write(this.#s(e));
   }
 }
-class H extends A {
-  constructor(t) {
-    super(t, {
+class F extends B {
+  constructor(e) {
+    super(e, {
       parse: JSON.parse,
-      stringify: (e) => JSON.stringify(e, null, 2)
+      stringify: (t) => JSON.stringify(t, null, 2)
     });
   }
 }
-const M = y(P(import.meta.url)), U = b(M, "db.json");
-class B {
-  constructor(t, e) {
-    this.db = new D(t, e);
+const L = P(T(import.meta.url)), J = b(L, "db.json");
+class G {
+  constructor(e, t) {
+    this.db = new I(e, t);
   }
   async init() {
     return await this.db.read(), await this.db.write(), this;
@@ -139,41 +139,41 @@ class B {
    * @returns {object} The new session object.
    */
   async createSession() {
-    const t = {
+    const e = {
       id: Date.now(),
       startTime: (/* @__PURE__ */ new Date()).toISOString(),
       endTime: null,
       status: "RUNNING",
       events: []
     };
-    return this.db.data.sessions.unshift(t), await this.db.write(), t;
+    return this.db.data.sessions.unshift(e), await this.db.write(), e;
   }
-  async addProfile(t) {
+  async addProfile(e) {
     this.db.data.profiles || (this.db.data.profiles = []);
-    const e = { ...t, id: Date.now() };
-    return this.db.data.profiles.push(e), await this.db.write(), e;
+    const t = { ...e, id: Date.now() };
+    return this.db.data.profiles.push(t), await this.db.write(), t;
   }
-  async updateProfile(t, e) {
+  async updateProfile(e, t) {
     if (!this.db.data.profiles)
       return null;
-    const s = this.db.data.profiles.findIndex((n) => n.id === t);
-    return s === -1 ? null : (this.db.data.profiles[s] = { ...e, id: t }, await this.db.write(), this.db.data.profiles[s]);
+    const s = this.db.data.profiles.findIndex((n) => n.id === e);
+    return s === -1 ? null : (this.db.data.profiles[s] = { ...t, id: e }, await this.db.write(), this.db.data.profiles[s]);
   }
-  async deleteProfile(t) {
-    this.db.data.profiles && (this.db.data.profiles = this.db.data.profiles.filter((e) => e.id !== t), await this.db.write());
+  async deleteProfile(e) {
+    this.db.data.profiles && (this.db.data.profiles = this.db.data.profiles.filter((t) => t.id !== e), await this.db.write());
   }
   /**
    * Adds a status event to an active session.
    * @param {number} sessionId The ID of the session to add the event to.
    * @param {object} eventData The status data to record.
    */
-  async addSessionEvent(t, e) {
-    const s = this.db.data.sessions.find((n) => n.id === t);
+  async addSessionEvent(e, t) {
+    const s = this.db.data.sessions.find((n) => n.id === e);
     if (s) {
-      const n = new Date(s.startTime), v = Math.round((/* @__PURE__ */ new Date() - n) / 1e3);
+      const n = new Date(s.startTime), E = Math.round((/* @__PURE__ */ new Date() - n) / 1e3);
       s.events.push({
-        ...e,
-        elapsedTime: v
+        ...t,
+        elapsedTime: E
       }), await this.db.write();
     }
   }
@@ -182,9 +182,9 @@ class B {
    * @param {number} sessionId The ID of the session to finalize.
    * @param {string} finalStatus The final status of the session ('COMPLETED' or 'ABORTED').
    */
-  async endSession(t, e) {
-    const s = this.db.data.sessions.find((n) => n.id === t);
-    s && s.status === "RUNNING" && (s.endTime = (/* @__PURE__ */ new Date()).toISOString(), s.status = e, await this.db.write());
+  async endSession(e, t) {
+    const s = this.db.data.sessions.find((n) => n.id === e);
+    s && s.status === "RUNNING" && (s.endTime = (/* @__PURE__ */ new Date()).toISOString(), s.status = t, await this.db.write());
   }
   /**
    * Clears all sessions from the database.
@@ -193,60 +193,60 @@ class B {
     this.db.data.sessions = [], await this.db.write();
   }
 }
-const G = new H(U), J = { sessions: [], profiles: [] }, l = await new B(G, J).init();
-var m = {}, p = {};
-Object.defineProperty(p, "__esModule", { value: !0 });
-p.DelimiterParser = void 0;
-const L = O;
-class K extends L.Transform {
+const H = new F(J), U = { sessions: [], profiles: [] }, r = await new G(H, U).init();
+var w = {}, h = {};
+Object.defineProperty(h, "__esModule", { value: !0 });
+h.DelimiterParser = void 0;
+const K = $;
+class W extends K.Transform {
   includeDelimiter;
   delimiter;
   buffer;
-  constructor({ delimiter: t, includeDelimiter: e = !1, ...s }) {
-    if (super(s), t === void 0)
+  constructor({ delimiter: e, includeDelimiter: t = !1, ...s }) {
+    if (super(s), e === void 0)
       throw new TypeError('"delimiter" is not a bufferable object');
-    if (t.length === 0)
+    if (e.length === 0)
       throw new TypeError('"delimiter" has a 0 or undefined length');
-    this.includeDelimiter = e, this.delimiter = Buffer.from(t), this.buffer = Buffer.alloc(0);
+    this.includeDelimiter = t, this.delimiter = Buffer.from(e), this.buffer = Buffer.alloc(0);
   }
-  _transform(t, e, s) {
-    let n = Buffer.concat([this.buffer, t]), a;
-    for (; (a = n.indexOf(this.delimiter)) !== -1; )
-      this.push(n.slice(0, a + (this.includeDelimiter ? this.delimiter.length : 0))), n = n.slice(a + this.delimiter.length);
+  _transform(e, t, s) {
+    let n = Buffer.concat([this.buffer, e]), c;
+    for (; (c = n.indexOf(this.delimiter)) !== -1; )
+      this.push(n.slice(0, c + (this.includeDelimiter ? this.delimiter.length : 0))), n = n.slice(c + this.delimiter.length);
     this.buffer = n, s();
   }
-  _flush(t) {
-    this.push(this.buffer), this.buffer = Buffer.alloc(0), t();
+  _flush(e) {
+    this.push(this.buffer), this.buffer = Buffer.alloc(0), e();
   }
 }
-p.DelimiterParser = K;
-Object.defineProperty(m, "__esModule", { value: !0 });
-var T = m.ReadlineParser = void 0;
-const W = p;
-class z extends W.DelimiterParser {
-  constructor(t) {
-    const e = {
+h.DelimiterParser = W;
+Object.defineProperty(w, "__esModule", { value: !0 });
+var v = w.ReadlineParser = void 0;
+const Y = h;
+class z extends Y.DelimiterParser {
+  constructor(e) {
+    const t = {
       delimiter: Buffer.from(`
 `, "utf8"),
       encoding: "utf8",
-      ...t
+      ...e
     };
-    typeof e.delimiter == "string" && (e.delimiter = Buffer.from(e.delimiter, e.encoding)), super(e);
+    typeof t.delimiter == "string" && (t.delimiter = Buffer.from(t.delimiter, t.encoding)), super(t);
   }
 }
-T = m.ReadlineParser = z;
+v = w.ReadlineParser = z;
 class V {
-  constructor(t, e = 9600) {
-    this.portPath = t, this.baudRate = e, this.port = null, this.parser = null, this.onStatusCallback = null, this.lastState = null, this.activeSessionId = null;
+  constructor(e, t = 9600) {
+    this.portPath = e, this.baudRate = t, this.port = null, this.parser = null, this.onStatusCallback = null, this.lastState = null, this.activeSessionId = null;
   }
   connect() {
-    return new Promise((t, e) => {
-      this.port = new E({ path: this.portPath, baudRate: this.baudRate }, (s) => {
+    return new Promise((e, t) => {
+      this.port = new N({ path: this.portPath, baudRate: this.baudRate }, (s) => {
         if (s)
-          return e(s);
+          return t(s);
       }), this.port.on("error", (s) => {
         console.error("Serial Port Error:", s.message);
-      }), this.parser = this.port.pipe(new T({ delimiter: `\r
+      }), this.parser = this.port.pipe(new v({ delimiter: `\r
 ` })), this.parser.on("data", (s) => {
         if (!(!s || s.trim() === ""))
           try {
@@ -256,40 +256,40 @@ class V {
             console.log("Raw Serial Data:", s);
           }
       }), this.port.on("open", () => {
-        console.log(`Connected to kiln on ${this.portPath}`), setTimeout(t, 2e3);
+        console.log(`Connected to kiln on ${this.portPath}`), setTimeout(e, 2e3);
       });
     });
   }
-  async handleData(t) {
-    if (t.status === "ok" || t.status === "error") {
-      this.onStatusCallback ? this.onStatusCallback(t) : console.log("Received Command Response:", t);
+  async handleData(e) {
+    if (e.status === "ok" || e.status === "error") {
+      this.onStatusCallback ? this.onStatusCallback(e) : console.log("Received Command Response:", e);
       return;
     }
-    this.onStatusCallback ? this.onStatusCallback(t) : console.log("Received:", t);
-    const e = t.state;
-    if (e && e !== this.lastState) {
-      if (e === "STARTING") {
-        const n = await l.createSession();
+    this.onStatusCallback ? this.onStatusCallback(e) : console.log("Received:", e);
+    const t = e.state;
+    if (t && t !== this.lastState) {
+      if (t === "STARTING") {
+        const n = await r.createSession();
         this.activeSessionId = n.id, console.log(`[SESSION] Started new session: ${this.activeSessionId}`);
       }
-      const s = e === "COMPLETED" || e === "ABORTED" || e === "EMERGENCY_STOP";
+      const s = t === "COMPLETED" || t === "ABORTED" || t === "EMERGENCY_STOP";
       if (this.activeSessionId && s) {
-        const n = e;
-        console.log(`[SESSION] Ending session: ${this.activeSessionId} with status: ${n}`), await l.endSession(this.activeSessionId, n), this.activeSessionId = null;
+        const n = t;
+        console.log(`[SESSION] Ending session: ${this.activeSessionId} with status: ${n}`), await r.endSession(this.activeSessionId, n), this.activeSessionId = null;
       }
     }
-    this.activeSessionId && t.state && await l.addSessionEvent(this.activeSessionId, t), this.lastState = e;
+    this.activeSessionId && e.state && await r.addSessionEvent(this.activeSessionId, e), this.lastState = t;
   }
-  onStatus(t) {
-    this.onStatusCallback = t;
+  onStatus(e) {
+    this.onStatusCallback = e;
   }
-  sendCommand(t) {
+  sendCommand(e) {
     if (!this.port || !this.port.isOpen) {
-      console.error("Port not open, cannot send command:", t);
+      console.error("Port not open, cannot send command:", e);
       return;
     }
-    const e = JSON.stringify(t);
-    console.log("Sending:", e), this.port.write(e + `
+    const t = JSON.stringify(e);
+    console.log("Sending:", t), this.port.write(t + `
 `, (s) => {
       if (s)
         return console.log("Error on write: ", s.message);
@@ -306,11 +306,14 @@ class V {
    * Set the kiln profile
    * @param {Object} profile - Full profile object with steps
    */
-  setProfile(t) {
-    const e = {
+  setProfile(e) {
+    console.log("Setting profile:", JSON.stringify(e, null, 2));
+    const t = {
       command: "profile",
-      steps: t.steps.map((s) => ({
-        type: s.mode,
+      id: e.id,
+      name: e.name,
+      steps: e.steps.map((s) => ({
+        type: s.type || s.mode || "IDLE",
         // RAMP, SOAK, COOL...
         targetTemperature: s.targetTemperature,
         duration: s.duration,
@@ -319,140 +322,158 @@ class V {
         // degrees/hour
       }))
     };
-    this.sendCommand(e);
+    this.sendCommand(t);
   }
   getStatus() {
     this.sendCommand({ command: "status" });
   }
-  testInput(t, e, s) {
+  testInput(e, t, s) {
     const n = {
       command: "testInput",
-      temperature: t
+      temperature: e
     };
-    e !== void 0 && (n.duration = e), s !== void 0 && (n.setPoint = s), this.sendCommand(n);
+    t !== void 0 && (n.duration = t), s !== void 0 && (n.setPoint = s), this.sendCommand(n);
   }
 }
-const Y = S(import.meta.url);
-I(Y);
+const Q = y(import.meta.url);
+D(Q);
 console.log("Initializing Kiln Controller Service...");
-console.log(`Environment: ${c.isProduction ? "Production" : "Development"}`);
-console.log(`Serving Client from: ${c.clientPath}`);
-const r = new V(c.serialPort, c.baudRate), o = h();
-let f = { state: "UNKNOWN", timestamp: 0 }, d = [];
-o.use($());
-o.use(h.json());
-o.use(h.static(c.clientPath));
-o.get("/api/profiles", (i, t) => {
-  t.json(l.db.data.profiles || []);
+console.log(`Environment: ${d.isProduction ? "Production" : "Development"}`);
+console.log(`Serving Client from: ${d.clientPath}`);
+const l = new V(d.serialPort, d.baudRate), o = m();
+let p = { state: "UNKNOWN", timestamp: 0 }, u = [], a = null;
+o.use(_());
+o.use(m.json());
+o.use(m.static(d.clientPath));
+o.get("/api/profiles", (i, e) => {
+  e.json(r.db.data.profiles || []);
 });
-o.post("/api/profiles", async (i, t) => {
-  const e = await l.addProfile(i.body);
-  t.json(e);
+o.post("/api/profiles", async (i, e) => {
+  const t = await r.addProfile(i.body);
+  e.json(t);
 });
-o.put("/api/profiles/:id", async (i, t) => {
-  const e = parseInt(i.params.id), s = await l.updateProfile(e, i.body);
-  s ? t.json(s) : t.status(404).json({ error: "Profile not found" });
+o.put("/api/profiles/:id", async (i, e) => {
+  const t = parseInt(i.params.id), s = await r.updateProfile(t, i.body);
+  s ? e.json(s) : e.status(404).json({ error: "Profile not found" });
 });
-o.delete("/api/profiles/:id", async (i, t) => {
-  const e = parseInt(i.params.id);
-  await l.deleteProfile(e), t.json({ success: !0 });
+o.delete("/api/profiles/:id", async (i, e) => {
+  const t = parseInt(i.params.id);
+  await r.deleteProfile(t), e.json({ success: !0 });
 });
-o.get("/api/history", (i, t) => {
-  t.json(l.db.data.sessions);
+o.get("/api/history", (i, e) => {
+  e.json(r.db.data.sessions);
 });
-o.delete("/api/history", async (i, t) => {
-  await l.clearHistory(), t.json({ success: !0, message: "History cleared" });
+o.delete("/api/history", async (i, e) => {
+  await r.clearHistory(), e.json({ success: !0, message: "History cleared" });
 });
-o.get("/api/history/:id", (i, t) => {
-  const e = parseInt(i.params.id, 10), s = l.db.data.sessions.find((n) => n.id === e);
-  s ? t.json(s) : t.status(404).json({ success: !1, message: "Session not found" });
+o.get("/api/history/:id", (i, e) => {
+  const t = parseInt(i.params.id, 10), s = r.db.data.sessions.find((n) => n.id === t);
+  s ? e.json(s) : e.status(404).json({ success: !1, message: "Session not found" });
 });
-o.get("/api/events", (i, t) => {
-  t.setHeader("Content-Type", "text/event-stream"), t.setHeader("Cache-Control", "no-cache"), t.setHeader("Connection", "keep-alive"), t.flushHeaders();
-  const e = JSON.stringify(f);
-  t.write(`data: ${e}
+o.get("/api/events", (i, e) => {
+  e.setHeader("Content-Type", "text/event-stream"), e.setHeader("Cache-Control", "no-cache"), e.setHeader("Connection", "keep-alive"), e.flushHeaders();
+  const t = JSON.stringify(p);
+  e.write(`data: ${t}
 
 `);
   const s = Date.now(), n = {
     id: s,
-    res: t
+    res: e
   };
-  d.push(n), i.on("close", () => {
-    d = d.filter((a) => a.id !== s);
+  u.push(n), i.on("close", () => {
+    u = u.filter((c) => c.id !== s);
   });
 });
-o.get("/api/status", (i, t) => {
-  t.json(f);
+o.get("/api/status", (i, e) => {
+  e.json(p);
 });
-o.post("/api/start", async (i, t) => {
-  const { profileId: e } = i.body;
-  if (e) {
-    const s = l.db.data.profiles?.find((n) => n.id === e);
+o.post("/api/start", async (i, e) => {
+  const { profileId: t } = i.body;
+  if (t) {
+    const s = r.db.data.profiles?.find((n) => n.id === t);
     if (s)
-      console.log(`Loading profile ${s.name} before starting...`), r.setProfile(s);
+      console.log(`Loading profile ${s.name} before starting...`), l.setProfile(s);
     else
-      return t.status(404).json({ success: !1, message: "Profile not found" });
+      return e.status(404).json({ success: !1, message: "Profile not found" });
   }
-  r.start(), t.json({ success: !0, message: "Start command sent" });
+  l.start();
+  try {
+    a = (await r.createSession()).id, console.log(`Started new session: ${a}`);
+  } catch (s) {
+    console.error("Failed to create history session:", s);
+  }
+  e.json({ success: !0, message: "Start command sent" });
 });
-o.post("/api/stop", (i, t) => {
-  r.stop(), t.json({ success: !0, message: "Stop command sent" });
+o.post("/api/stop", async (i, e) => {
+  l.stop(), a && (await r.endSession(a, "ABORTED"), console.log(`Ended session ${a}: ABORTED`), a = null), e.json({ success: !0, message: "Stop command sent" });
 });
-o.post("/api/profile", (i, t) => {
-  const { targetTemperature: e, rampTime: s, soakDuration: n, coolTime: a } = i.body;
-  if (e === void 0)
-    return t.status(400).json({ success: !1, message: "targetTemperature is required" });
-  r.setProfile(e, s, n, a), t.json({
+o.post("/api/profile", (i, e) => {
+  const { targetTemperature: t, rampTime: s, soakDuration: n, coolTime: c } = i.body;
+  if (t === void 0)
+    return e.status(400).json({ success: !1, message: "targetTemperature is required" });
+  l.setProfile(t, s, n, c), e.json({
     success: !0,
     message: "Profile update sent",
-    params: { targetTemperature: e, rampTime: s, soakDuration: n, coolTime: a }
+    params: { targetTemperature: t, rampTime: s, soakDuration: n, coolTime: c }
   });
 });
-o.post("/api/test", (i, t) => {
-  const { temperature: e, duration: s, setPoint: n } = i.body;
-  if (e === void 0)
-    return t.status(400).json({ success: !1, message: "temperature is required" });
-  r.testInput(e, s, n), t.json({
+o.post("/api/test", (i, e) => {
+  const { temperature: t, duration: s, setPoint: n } = i.body;
+  if (t === void 0)
+    return e.status(400).json({ success: !1, message: "temperature is required" });
+  l.testInput(t, s, n), e.json({
     success: !0,
     message: "Test mode initiated",
-    params: { temperature: e, duration: s, setPoint: n }
+    params: { temperature: t, duration: s, setPoint: n }
   });
 });
-o.post("/api/test/temp", (i, t) => {
-  const { temperature: e } = i.body;
-  if (e === void 0)
-    return t.status(400).json({ success: !1, message: "temperature is required" });
-  r.testInput(e), t.json({
+o.post("/api/test/temp", (i, e) => {
+  const { temperature: t } = i.body;
+  if (t === void 0)
+    return e.status(400).json({ success: !1, message: "temperature is required" });
+  l.testInput(t), e.json({
     success: !0,
     message: "Simulated temperature set",
-    params: { temperature: e }
+    params: { temperature: t }
   });
 });
-r.onStatus((i) => {
-  f = { ...i, timestamp: Date.now() }, d.forEach((t) => {
-    t.res.write(`data: ${JSON.stringify(f)}
+l.onStatus(async (i) => {
+  if (p = { ...i, timestamp: Date.now() }, u.forEach((e) => {
+    e.res.write(`data: ${JSON.stringify(p)}
 
 `);
-  }), i.state ? console.log(`[STATUS] State: ${i.state} | Temp: ${i.input?.toFixed(1)}°C | Setpoint: ${i.setpoint?.toFixed(1)}°C`) : i.message ? console.log(`[MSG] ${i.message}`) : console.log("[DATA]", i);
+  }), a && (i.state === "RAMP" || i.state === "SOAK" || i.state === "COOL"))
+    try {
+      await r.addSessionEvent(a, i);
+    } catch (e) {
+      console.error("Error saving session event:", e);
+    }
+  else if (a && (i.state === "COMPLETED" || i.state === "ABORTED" || i.state === "EMERGENCY_STOP"))
+    try {
+      await r.addSessionEvent(a, i), await r.endSession(a, i.state), console.log(`Session ${a} completed via status update: ${i.state}`), a = null;
+    } catch (e) {
+      console.error("Error closing session:", e);
+    }
+  i.state ? console.log("[STATUS]", JSON.stringify(i)) : i.message ? console.log(`[MSG] ${i.message}`) : console.log("[DATA]", i);
 });
-o.get("*", (i, t) => {
-  t.sendFile(u.join(c.clientPath, "index.html"));
+o.get("*", (i, e) => {
+  e.sendFile(f.join(d.clientPath, "index.html"));
 });
-async function Q() {
+async function X() {
   try {
-    await r.connect(), o.listen(c.serverPort, () => {
-      console.log(`Web API running on http://localhost:${c.serverPort}`);
+    await l.connect(), o.listen(d.serverPort, () => {
+      console.log(`Web API running on http://localhost:${d.serverPort}`);
     }), console.log("Requesting initial status...");
     const i = () => {
       console.log(`
-Service stopping. Turning off kiln...`), r.stop(), setTimeout(() => {
-        r.port && r.port.isOpen && r.port.close(), process.exit(0);
+Service stopping. Turning off kiln...`), l.stop(), setTimeout(() => {
+        l.port && l.port.isOpen && l.port.close(), process.exit(0);
       }, 500);
     };
     process.on("SIGINT", i), process.on("SIGTERM", i);
   } catch (i) {
-    console.error("ERROR: Failed to connect to kiln."), console.error(`Attempted port: ${c.serialPort}`), console.error("Details:", i.message), console.log(`
+    console.error("ERROR: Failed to connect to kiln."), console.error(`Attempted port: ${d.serialPort}`), console.error("Details:", i.message), console.log(`
 Hint: Check if the Arduino is connected and the port is correct in config.js`), process.exit(1);
   }
 }
-Q();
+X();
