@@ -2,15 +2,13 @@
  * Kiln Controller v0.2.0
  * Multi-step profile support
  */
+#include "driver.h"
 #include "kiln.h"
-#include "pwmDriver.h"
 
 // --- Hardware Pins ---
 #define DO   3
 #define CS   4
 #define CLK  5
-#define SSR_PIN_UPPER 6
-#define SSR_PIN_LOWER 7
 #define LED_PIN 13 
 
 // --- Configuration ---
@@ -28,6 +26,11 @@ double setpoint = 0, input = 0, output = 0;
 double Kp=1000, Ki=10, Kd=100;
 PID kilnPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 Adafruit_MAX31855 thermocouple(CLK, CS, DO);
+
+#ifdef DRIVER_PWM
+#include <Adafruit_PWMServoDriver.h>
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+#endif
 
 // Simulation
 bool isSimulated = false;
@@ -65,9 +68,8 @@ void setup() {
     serializeJson(doc, Serial_);
     Serial_.println();
 
-    pinMode(SSR_PIN_UPPER, OUTPUT);
-    pinMode(SSR_PIN_LOWER, OUTPUT);
     pinMode(LED_PIN, OUTPUT);
+    setupIO();
     
     windowStartTime = millis();
     kilnPID.SetOutputLimits(0, PID_WINDOW_SIZE);
@@ -119,11 +121,11 @@ void loop() {
         kilnPID.Compute();
         
         if (output > (now - windowStartTime)) {
-            digitalWrite(SSR_PIN_UPPER, HIGH);
-            digitalWrite(SSR_PIN_LOWER, HIGH);
+            setSSRState(SSR_UPPER, true);
+            setSSRState(SSR_LOWER, true);
         } else {
-            digitalWrite(SSR_PIN_UPPER, LOW);
-            digitalWrite(SSR_PIN_LOWER, LOW);
+            setSSRState(SSR_UPPER, false);
+            setSSRState(SSR_LOWER, false);
         }
     } else {
         forceStop();
@@ -136,8 +138,7 @@ void loop() {
 
 void forceStop() {
     output = 0;
-    digitalWrite(SSR_PIN_UPPER, LOW);
-    digitalWrite(SSR_PIN_LOWER, LOW);
+    killAllHeat();
 }
 
 void advanceToNextStep(double nextInitialSetpoint) {
@@ -290,7 +291,7 @@ void handleCommand(JsonDocument& doc) {
         isSimulated = true;
         
         // Only reset timer if duration is explicitly provided or if starting from stopped state
-        if (doc.containsKey("duration")) {
+        if (doc["duration"]) {
             simulationStartTime = millis();
             unsigned long dur = doc["duration"];
             if (dur == 0) dur = 120;
@@ -302,7 +303,7 @@ void handleCommand(JsonDocument& doc) {
         }
         // If running and no duration provided, preserve existing timeout
 
-        if (doc.containsKey("setPoint")) {
+        if (doc["setPoint"]) {
             setpoint = doc["setPoint"];
         }
         response["message"] = "Simulating";
@@ -406,8 +407,8 @@ void reportStatus(bool force) {
         
         doc["timeRemaining"] = estimateTimeRemaining();
         doc["output"] = output;
-        doc["ssrUpper"] = digitalRead(SSR_PIN_UPPER) == HIGH;
-        doc["ssrLower"] = digitalRead(SSR_PIN_LOWER) == HIGH;
+        doc["ssrUpper"] = getSSRState(SSR_UPPER);
+        doc["ssrLower"] = getSSRState(SSR_LOWER);
         doc["isSimulated"] = isSimulated;
         
         serializeJson(doc, Serial_);
