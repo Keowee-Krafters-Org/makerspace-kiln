@@ -9,6 +9,10 @@
 #define SSR_1_2 1
 #define SSR_2_1 2
 #define SSR_2_2 3
+#define MAXIMUN_PWM_VALUE 4096
+#define MINIMUM_PWM_VALUE 0
+#define ON_STATE MAXIMUN_PWM_VALUE, MINIMUM_PWM_VALUE
+#define OFF_STATE MINIMUM_PWM_VALUE, MAXIMUN_PWM_VALUE
 
 extern Adafruit_PWMServoDriver pwm;
 
@@ -20,19 +24,19 @@ extern Adafruit_PWMServoDriver pwm;
 void setSSRState(uint8_t pin, bool state) {
     if (pin == SSR_UPPER) {
         if (state) {
-            pwm.setPWM(SSR_1_1, 4096, 0);
-            pwm.setPWM(SSR_1_2, 4096, 0);
+            pwm.setPWM(SSR_1_1, ON_STATE);
+            pwm.setPWM(SSR_1_2, ON_STATE);
         } else {
-            pwm.setPWM(SSR_1_1, 0, 4096);
-            pwm.setPWM(SSR_1_2, 0, 4096);
+            pwm.setPWM(SSR_1_1, OFF_STATE);
+            pwm.setPWM(SSR_1_2, OFF_STATE);
         }
     } else if (pin == SSR_LOWER) {
         if (state) {
-            pwm.setPWM(SSR_2_1, 4096, 0);
-            pwm.setPWM(SSR_2_2, 4096, 0);
+            pwm.setPWM(SSR_2_1, ON_STATE);
+            pwm.setPWM(SSR_2_2, ON_STATE);
         } else {
-            pwm.setPWM(SSR_2_1, 0, 4096);
-            pwm.setPWM(SSR_2_2, 0, 4096);
+            pwm.setPWM(SSR_2_1, OFF_STATE);
+            pwm.setPWM(SSR_2_2, OFF_STATE);
         }
     }
 }
@@ -52,7 +56,13 @@ void setupIO() {
 }
 
 bool getSSRState(uint8_t pin) {
-    return false; // Not implemented for PWM driver
+    // Retrive the ON/OFF state based on the PWM value of the first channel for each SSR
+    if (pin == SSR_UPPER) {
+        return pwm.getPWM(SSR_1_1) == ON_STATE;
+    } else if (pin == SSR_LOWER) {
+        return pwm.getPWM(SSR_2_1) == ON_STATE;
+    }
+    return false;
 }
 
 #endif // DRIVER_PWM
