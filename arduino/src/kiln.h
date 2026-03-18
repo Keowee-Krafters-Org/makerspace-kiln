@@ -6,6 +6,9 @@
 #include <Adafruit_MAX31855.h>
 #include <ArduinoJson.h> 
 
+
+
+
 #define MAX_PROFILE_STEPS 20
 
 enum KilnState { IDLE, PREHEAT, RAMP, SOAK, COOL, COMPLETED, ABORTED, EMERGENCY_STOP, ERROR_STATE };
