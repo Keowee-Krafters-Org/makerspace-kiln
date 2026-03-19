@@ -22,5 +22,6 @@ void setupIO();
 bool getSSRState(uint8_t pin);
 
 //#define DRIVER_PIO // Uncomment to use direct pin control for SSRs (simpler but may have timing issues at very low PID windows)
-#define DRIVER_PWM // Uncomment to use PWM-based SSR control (requires Adafruit PWM Shield)
+//#define DRIVER_PWM // Uncomment to use PWM-based SSR control (requires Adafruit PWM Shield)
+#define DRIVER_MOTOR // Uncomment to use the TinyCircuits Motor Driver shield
 #endif
