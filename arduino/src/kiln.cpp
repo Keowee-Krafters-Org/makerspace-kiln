@@ -43,7 +43,7 @@ unsigned long windowStartTime;
 unsigned long stepStartTime = 0;
 unsigned long profileStartTime = 0;
 unsigned long lastReportTime = 0;
-const unsigned long REPORT_INTERVAL = 2000;
+const unsigned long REPORT_INTERVAL = 10000;
 
 // LED
 unsigned long ledLastChangeTime = 0;
@@ -69,8 +69,9 @@ void setup() {
     Serial_.println();
 
     pinMode(LED_PIN, OUTPUT);
-    setupIO();
-    
+    if (!setupIO()) {
+        currentState = EMERGENCY_STOP;
+    }
     windowStartTime = millis();
     kilnPID.SetOutputLimits(0, PID_WINDOW_SIZE);
     kilnPID.SetMode(AUTOMATIC);

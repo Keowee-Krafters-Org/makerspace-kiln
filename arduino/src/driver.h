@@ -17,7 +17,7 @@ void setSSRState(uint8_t pin, bool state);
  */
 void killAllHeat() ;
 
-void setupIO();
+bool setupIO();
 
 bool getSSRState(uint8_t pin);
 

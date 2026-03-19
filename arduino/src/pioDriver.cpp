@@ -35,11 +35,12 @@ void killAllHeat() {
     if(SSR_2_2 > -1) digitalWrite(SSR_2_2, LOW);
 }
 
-void setupIO() {
+bool setupIO() {
     pinMode(SSR_1_1, OUTPUT);
     pinMode(SSR_1_2, OUTPUT);
     if(SSR_2_1 > -1) pinMode(SSR_2_1, OUTPUT);
     if(SSR_2_2 > -1) pinMode(SSR_2_2, OUTPUT);
+    return true;
 }
 
 bool getSSRState(uint8_t pin) {

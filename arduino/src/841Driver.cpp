@@ -32,13 +32,12 @@ void killAllHeat() {
     motor.setMotor(2, 0);
 }
 
-void setupIO() {
+bool setupIO() {
     Wire.begin();
     if (motor.begin(PWM_PERIOD)) {
-        // You might want to add some error handling here
-        // For example, light up an LED or print to serial
-        while(1);
+        return false;
     }
+    return true;
 }
 
 bool getSSRState(uint8_t pin) {

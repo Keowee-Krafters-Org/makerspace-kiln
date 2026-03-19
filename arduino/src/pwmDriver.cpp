@@ -50,9 +50,10 @@ void killAllHeat() {
     }
 }
 
-void setupIO() {
+bool setupIO() {
     pwm.begin();
     pwm.setPWMFreq(1000); // Set to 1kHz
+    return true;
 }
 
 bool getSSRState(uint8_t pin) {
