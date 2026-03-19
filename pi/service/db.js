@@ -9,6 +9,7 @@ const file = join(__dirname, 'db.json');
 class KilnDatabase {
   constructor(adapter, defaultData) {
     this.db = new Low(adapter, defaultData);
+    this.lastWrite = null;
   }
 
   async init() {
@@ -71,8 +72,16 @@ class KilnDatabase {
         ...eventData,
         elapsedTime: elapsedTimeInSeconds
       });
-      await this.db.write();
+      if (!this.lastWrite || now - this.lastWrite > 1000) {
+        await this.db.write();
+        this.lastWrite = now;
+      }
     }
+  }
+
+  async flush() {
+    await this.db.write();
+    this.lastWrite = new Date();
   }
 
   /**
@@ -85,7 +94,7 @@ class KilnDatabase {
     if (session && session.status === 'RUNNING') {
       session.endTime = new Date().toISOString();
       session.status = finalStatus;
-      await this.db.write();
+      await this.flush();
     }
   }
 
