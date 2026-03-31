@@ -45,6 +45,10 @@ unsigned long profileStartTime = 0;
 unsigned long lastReportTime = 0;
 const unsigned long REPORT_INTERVAL = 2000;
 
+// Commanded heater state used for status reporting.
+bool ssrUpperOn = false;
+bool ssrLowerOn = false;
+
 // LED
 unsigned long ledLastChangeTime = 0;
 bool ledState = HIGH;
@@ -119,14 +123,12 @@ void loop() {
         }
         
         kilnPID.Compute();
-        
-        if (output > (now - windowStartTime)) {
-            setSSRState(SSR_UPPER, true);
-            setSSRState(SSR_LOWER, true);
-        } else {
-            setSSRState(SSR_UPPER, false);
-            setSSRState(SSR_LOWER, false);
-        }
+
+        bool heatOn = output > (now - windowStartTime);
+        setSSRState(SSR_UPPER, heatOn);
+        setSSRState(SSR_LOWER, heatOn);
+        ssrUpperOn = heatOn;
+        ssrLowerOn = heatOn;
     } else {
         forceStop();
     }
@@ -139,6 +141,8 @@ void loop() {
 void forceStop() {
     output = 0;
     killAllHeat();
+    ssrUpperOn = false;
+    ssrLowerOn = false;
 }
 
 void advanceToNextStep(double nextInitialSetpoint) {
@@ -407,8 +411,8 @@ void reportStatus(bool force) {
         
         doc["timeRemaining"] = estimateTimeRemaining();
         doc["output"] = output;
-        doc["ssrUpper"] = getSSRState(SSR_UPPER);
-        doc["ssrLower"] = getSSRState(SSR_LOWER);
+        doc["ssrUpper"] = ssrUpperOn;
+        doc["ssrLower"] = ssrLowerOn;
         doc["isSimulated"] = isSimulated;
         
         serializeJson(doc, Serial_);
