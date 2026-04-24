@@ -7,7 +7,8 @@
 #include <Wire.h>
 #include "ATtiny841Lib.h"
 
-MotorDriver motor(NO_R_REMOVED);
+MotorDriver driverLower(NO_R_REMOVED);
+MotorDriver driverUpper(R1_REMOVED);
 
 #define PWM_PERIOD 20000 // 20ms, standard for servos, but works for motors
 
@@ -18,9 +19,11 @@ MotorDriver motor(NO_R_REMOVED);
  */
 void setSSRState(uint8_t pin, bool state) {
     if (pin == SSR_UPPER) {
-        motor.setMotor(1, state ? PWM_PERIOD : 0);
+        driverUpper.setMotor(1, state ? PWM_PERIOD : 0);
+        driverUpper.setMotor(2, state ? PWM_PERIOD : 0);
     } else if (pin == SSR_LOWER) {
-        motor.setMotor(2, state ? PWM_PERIOD : 0);
+        driverLower.setMotor(1, state ? PWM_PERIOD : 0);
+        driverLower.setMotor(2, state ? PWM_PERIOD : 0);
     }
 }
 
@@ -28,13 +31,15 @@ void setSSRState(uint8_t pin, bool state) {
  * Emergency Shutdown: Turns all motors OFF immediately
  */
 void killAllHeat() {
-    motor.setMotor(1, 0);
-    motor.setMotor(2, 0);
+    driverLower.setMotor(1, 0);
+    driverLower.setMotor(2, 0);
+    driverUpper.setMotor(1, 0);
+    driverUpper.setMotor(2, 0);
 }
 
 void setupIO() {
     Wire.begin();
-    if (motor.begin(PWM_PERIOD)) {
+    if (driverLower.begin(PWM_PERIOD) || driverUpper.begin(PWM_PERIOD)) {
         // You might want to add some error handling here
         // For example, light up an LED or print to serial
         while(1);
@@ -44,10 +49,10 @@ void setupIO() {
 bool getSSRState(uint8_t pin) {
     if (pin == SSR_UPPER) {
         // Motor 1 corresponds to PWM values in RETURN_VAL_REG_0 and RETURN_VAL_REG_1
-        return motor.read(RETURN_VAL_REG_0) != 0 || motor.read(RETURN_VAL_REG_1) != 0;
+        return driverUpper.read(RETURN_VAL_REG_0) != 0 || driverUpper.read(RETURN_VAL_REG_1) != 0;
     } else if (pin == SSR_LOWER) {
         // Motor 2 corresponds to PWM values in RETURN_VAL_REG_2 and RETURN_VAL_REG_3
-        return motor.read(RETURN_VAL_REG_2) != 0 || motor.read(RETURN_VAL_REG_3) != 0;
+        return driverLower.read(RETURN_VAL_REG_2) != 0 || driverLower.read(RETURN_VAL_REG_3) != 0;
     }
     return false;
 }
