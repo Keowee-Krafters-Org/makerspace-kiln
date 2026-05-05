@@ -27,9 +27,21 @@ app.use(express.static(config.clientPath));
 
 // --- Web API Routes ---
 
+// --- Preferences ---
+app.get('/api/preferences', async (req, res) => {
+    const prefs = await kilnDatabase.getPreferences();
+    res.json(prefs);
+});
+
+app.post('/api/preferences', async (req, res) => {
+    const prefs = await kilnDatabase.updatePreferences(req.body);
+    res.json(prefs);
+});
+
 // --- Profiles ---
-app.get('/api/profiles', (req, res) => {
-    res.json(kilnDatabase.db.data.profiles || []);
+app.get('/api/profiles', async (req, res) => {
+    const profiles = await kilnDatabase.getProfiles();
+    res.json(profiles || []);
 });
 
 app.post('/api/profiles', async (req, res) => {
@@ -52,7 +64,7 @@ app.delete('/api/profiles/:id', async (req, res) => {
 
 // GET /api/history - Get all history records
 app.get('/api/history', (req, res) => {
-    res.json(kilnDatabase.db.data.sessions);
+    res.json(kilnDatabase.historyDb.data.sessions);
 });
 
 // DELETE /api/history - Clear all history records
@@ -64,7 +76,7 @@ app.delete('/api/history', async (req, res) => {
 // GET /api/history/:id - Get a single session by ID
 app.get('/api/history/:id', (req, res) => {
     const sessionId = parseInt(req.params.id, 10);
-    const session = kilnDatabase.db.data.sessions.find(s => s.id === sessionId);
+    const session = kilnDatabase.historyDb.data.sessions.find(s => s.id === sessionId);
     if (session) {
         res.json(session);
     } else {
@@ -105,18 +117,20 @@ app.post('/api/start', async (req, res) => {
     const { profileId } = req.body;
     
     if (profileId) {
-        const profile = kilnDatabase.db.data.profiles?.find(p => p.id === profileId);
+        const profiles = await kilnDatabase.getProfiles();
+        const profile = profiles?.find(p => p.id === profileId);
         if (profile) {
             console.log(`Loading profile ${profile.name} before starting...`);
             kiln.setProfile(profile);
-            // Give a small delay for the profile to be processed by Arduino before starting?
-            // Actually, Arduino will process commands sequentially.
         } else {
              return res.status(404).json({ success: false, message: 'Profile not found' });
         }
     }
 
-    kiln.start();
+    // Add a delay to allow the Arduino to process the profile before starting.
+    setTimeout(() => {
+        kiln.start();
+    }, 500); // 500ms delay
     
     // Create new history session
     try {
@@ -195,6 +209,7 @@ app.post('/api/test/temp', (req, res) => {
 
 // Handle incoming status messages from the Kiln
 kiln.onStatus(async (data) => {
+    const previousState = latestStatus.state;
     latestStatus = { ...data, timestamp: Date.now() };
 
     // Broadcast status to connected SSE clients
@@ -216,19 +231,32 @@ kiln.onStatus(async (data) => {
             await kilnDatabase.endSession(currentSessionId, data.state);
             console.log(`Session ${currentSessionId} completed via status update: ${data.state}`);
             currentSessionId = null;
-        } catch (err) {
+        } catch (err)
+            {
             console.error('Error closing session:', err);
         }
     }
 
-    // This is where you would hook in the Google AppScript Cloud API communication
-    // For now, we will log the raw JSON status to the console
-    if (data.state) {
-        console.log('[STATUS]', JSON.stringify(data));
-    } else if (data.message) {
-        console.log(`[MSG] ${data.message}`);
+    // Conditional Logging
+    const prefs = await kilnDatabase.getPreferences();
+    const logLevel = prefs.logLevel || 'verbose'; // Default to verbose if not set
+
+    if (logLevel === 'quiet') {
+        if (data.state && data.state !== previousState) {
+            console.log(`[STATE CHANGE] ${previousState} -> ${data.state}`);
+        }
+        if (data.message && data.message.includes('Lost contact')) {
+            console.log(`[CONNECTION] ${data.message}`);
+        }
     } else {
-        console.log('[DATA]', data);
+        // Verbose logging
+        if (data.state) {
+            console.log('[STATUS]', JSON.stringify(data));
+        } else if (data.message) {
+            console.log(`[MSG] ${data.message}`);
+        } else {
+            console.log('[DATA]', data);
+        }
     }
 });
 
@@ -239,6 +267,7 @@ app.get('*', (req, res) => {
 
 async function main() {
     try {
+        // The connect method will now handle its own retries.
         await kiln.connect();
         
         // Start Web Server
@@ -246,15 +275,15 @@ async function main() {
             console.log(`Web API running on http://localhost:${config.serverPort}`);
         });
 
-        // Initial status check
-        console.log('Requesting initial status...');
-        // setInterval(() => {
-        //     kiln.getStatus();
-        // }, config.statusInterval);
+        // Initial status check is less critical now, as connection is maintained.
+        console.log('Service is running and attempting to maintain Arduino connection.');
 
         // setup signal handlers for graceful shutdown
         const shutdown = () => {
             console.log('\nService stopping. Turning off kiln...');
+            if (kiln.reconnectInterval) {
+                clearInterval(kiln.reconnectInterval);
+            }
             kiln.stop();
             setTimeout(() => {
                 if (kiln.port && kiln.port.isOpen) {
@@ -268,10 +297,10 @@ async function main() {
         process.on('SIGTERM', shutdown);
 
     } catch (error) {
-        console.error('ERROR: Failed to connect to kiln.');
-        console.error(`Attempted port: ${config.serialPort}`);
+        // Initial connection failure is now handled by the reconnect logic,
+        // but we keep this for any synchronous errors during setup.
+        console.error('FATAL: Unrecoverable error during service startup.');
         console.error('Details:', error.message);
-        console.log('\nHint: Check if the Arduino is connected and the port is correct in config.js');
         process.exit(1);
     }
 }

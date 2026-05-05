@@ -8,6 +8,7 @@ import PreferenceView from './components/PreferenceView.vue'
 import PlotView from './components/PlotView.vue'
 
 const isMenuOpen = ref(false)
+const appVersion = import.meta.env.VITE_APP_VERSION;
 
 const routes = {
   '/': KilnDashboard,
@@ -102,6 +103,9 @@ const closeMenu = () => {
         @update:testParams="Object.assign(testParams, $event)"
       />
     </main>
+    <footer>
+      <p v-if="appVersion">Version: {{ appVersion }}</p>
+    </footer>
   </div>
 </template>
 
@@ -228,5 +232,14 @@ main {
   flex: 1;
   padding: 1rem;
   overflow-y: auto;
+}
+
+footer {
+  background: #1f1f1f;
+  padding: 0.5rem 1rem;
+  text-align: right;
+  font-size: 0.8rem;
+  color: #888;
+  border-top: 1px solid #333;
 }
 </style>

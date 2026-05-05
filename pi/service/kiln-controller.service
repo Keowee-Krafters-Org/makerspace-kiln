@@ -1,0 +1,18 @@
+[Unit]
+Description=Kiln Controller Service
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/node /opt/makerspace-kiln/index.js
+Restart=always
+User=pi
+Group=pi
+Environment=NODE_ENV=production
+WorkingDirectory=/opt/makerspace-kiln
+# Add this line to create and set permissions for the database directory
+PermissionsStartOnly=true
+ExecStartPre=/bin/mkdir -p /var/lib/kiln-controller
+ExecStartPre=/bin/chown -R pi:pi /var/lib/kiln-controller
+
+[Install]
+WantedBy=multi-user.target

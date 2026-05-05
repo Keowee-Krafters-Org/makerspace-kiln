@@ -11,43 +11,81 @@ class KilnInterface {
         this.onStatusCallback = null;
         this.lastState = null;
         this.activeSessionId = null;
+        this.isConnecting = false;
+        this.reconnectInterval = null;
     }
 
     connect() {
+        // If a reconnect interval is running, clear it.
+        if (this.reconnectInterval) {
+            clearInterval(this.reconnectInterval);
+            this.reconnectInterval = null;
+        }
+
+        // Prevent multiple concurrent connection attempts
+        if (this.isConnecting || (this.port && this.port.isOpen)) {
+            return Promise.resolve();
+        }
+        this.isConnecting = true;
+        
+        console.log(`Attempting to connect to kiln on ${this.portPath}...`);
+
         return new Promise((resolve, reject) => {
             this.port = new SerialPort({ path: this.portPath, baudRate: this.baudRate }, (err) => {
+                this.isConnecting = false;
                 if (err) {
+                    console.error(`Failed to open port ${this.portPath}:`, err.message);
+                    this.scheduleReconnect();
                     return reject(err);
                 }
             });
 
-            // Handle SerialPort errors (like disconnection)
             this.port.on('error', (err) => {
                 console.error('Serial Port Error:', err.message);
             });
 
-            // Arduino println() uses \r\n, so we parse lines
+            this.port.on('close', () => {
+                console.log('Serial port closed. Attempting to reconnect...');
+                this.port = null; // Discard the old port object
+                this.scheduleReconnect();
+            });
+
             this.parser = this.port.pipe(new ReadlineParser({ delimiter: '\r\n' }));
             
             this.parser.on('data', (data) => {
-                // Ignore empty lines
                 if (!data || data.trim() === '') return;
-                
                 try {
                     const json = JSON.parse(data);
                     this.handleData(json);
                 } catch (e) {
-                    // Sometimes startup messages aren't JSON
                     console.log('Raw Serial Data:', data); 
                 }
             });
 
             this.port.on('open', () => {
+                this.isConnecting = false;
                 console.log(`Connected to kiln on ${this.portPath}`);
-                // Allow time for Arduino autorestart on serial connection
+                if (this.reconnectInterval) {
+                    clearInterval(this.reconnectInterval);
+                    this.reconnectInterval = null;
+                }
                 setTimeout(resolve, 2000); 
             });
         });
+    }
+
+    scheduleReconnect() {
+        if (this.reconnectInterval) return; // Reconnect already scheduled
+
+        if (this.onStatusCallback) {
+            this.onStatusCallback({ state: 'RECONNECTING', message: 'Attempting to reconnect to Arduino...' });
+        }
+
+        this.reconnectInterval = setInterval(() => {
+            this.connect().catch(() => {
+                // Errors are logged in connect(), just need to catch to prevent unhandled rejections
+            });
+        }, 5000); // Retry every 5 seconds
     }
 
     async handleData(data) {
@@ -103,6 +141,10 @@ class KilnInterface {
     sendCommand(commandObj) {
         if (!this.port || !this.port.isOpen) {
             console.error('Port not open, cannot send command:', commandObj);
+            // Optionally, notify the frontend that the command could not be sent.
+            if (this.onStatusCallback) {
+                this.onStatusCallback({ state: 'ERROR', message: 'Cannot send command. Port is not open.' });
+            }
             return;
         }
 
@@ -130,22 +172,20 @@ class KilnInterface {
      * @param {Object} profile - Full profile object with steps
      */
     setProfile(profile) {
-        console.log('Setting profile:', JSON.stringify(profile, null, 2)); // Debug logging
-        // Transform service profile format to Arduino command format if needed
-        // Service: { steps: [{ number, targetTemperature, duration, rate, type/mode, initialSetpoint }] }
-        // Arduino expects: { command: "profile", id: 1, name: "foo", steps: [...] }
+        console.log('Setting profile:', JSON.stringify(profile, null, 2));
         
         const cmd = {
             command: 'profile',
             id: profile.id,
             name: profile.name,
             steps: profile.steps.map(s => ({
-                type: s.type || s.mode || 'IDLE', // RAMP, SOAK, COOL...
+                type: s.type || s.mode || 'IDLE',
                 targetTemperature: s.targetTemperature,
-                duration: s.duration, // minutes
-                rate: s.rate // degrees/hour
+                duration: s.duration,
+                rate: s.rate
             }))
         };
+        
         this.sendCommand(cmd);
     }
 

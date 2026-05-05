@@ -1,0 +1,72 @@
+{
+  "profiles": [
+    {
+      "name": "Test Step Heating",
+      "steps": [
+        {
+          "id": 1776981319114,
+          "type": "RAMP",
+          "targetTemperature": 1000,
+          "duration": 10,
+          "rate": 0
+        },
+        {
+          "id": 1776981325851,
+          "type": "SOAK",
+          "targetTemperature": 1000,
+          "duration": 10,
+          "rate": 0
+        },
+        {
+          "id": 1776981357644,
+          "type": "COOL",
+          "targetTemperature": 50,
+          "duration": 10,
+          "rate": 0
+        }
+      ],
+      "id": 1776981371933
+    },
+    {
+      "id": 1776981371934,
+      "name": "Bisque Glaze",
+      "steps": [
+        {
+          "id": 1776981319115,
+          "type": "RAMP",
+          "targetTemperature": 100,
+          "rate": 60
+        },
+        {
+          "id": 1776981325852,
+          "type": "RAMP",
+          "targetTemperature": 900,
+          "rate": 150
+        },
+        {
+          "id": 1776981357645,
+          "type": "RAMP",
+          "targetTemperature": 1060,
+          "rate": 100
+        },
+        {
+          "id": 1776981357646,
+          "type": "SOAK",
+          "targetTemperature": 1060,
+          "duration": 30
+        },
+        {
+          "id": 1776981357647,
+          "type": "COOL",
+          "targetTemperature": 50,
+          "rate": 0
+        }
+      ]
+    }
+  ],
+  "preferences": {
+    "temperatureUnits": "C",
+    "defaultProfile": 1,
+    "logLevel": "quiet"
+  }
+}

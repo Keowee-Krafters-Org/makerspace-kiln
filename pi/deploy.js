@@ -26,21 +26,28 @@ function run(cmd, cwd) {
 try {
     console.log('🔥 STARTING KILN DEPLOYMENT 🔥');
 
-    // 1. Clean Staging
+    // 1. Bump Version
+    console.log('\n📝 Bumping package version...');
+    run('npm version patch --no-git-tag-version');
+    const { version } = require('./package.json');
+    console.log(`  New version: ${version}`);
+
+    // 2. Clean Staging
     if (fs.existsSync(DIRS.stage)) fs.rmSync(DIRS.stage, { recursive: true });
     fs.mkdirSync(DIRS.stage);
 
-    // 2. Build Client
+    // 3. Build Client
     console.log('\n📦 Building Frontend...');
     run('npm install', DIRS.client);
-    run('npm run build', DIRS.client);
+    // Pass version to the client build
+    run(`cross-env VITE_APP_VERSION=${version} npm run build`, DIRS.client);
 
-    // 3. Build Service
+    // 4. Build Service
     console.log('\n⚙️  Building Service...');
     run('npm install', DIRS.service);
     run('npm run build', DIRS.service); // This runs the simplified vite config
 
-    // 4. Assemble Package in Staging
+    // 5. Assemble Package in Staging
     console.log('\n🧩 Assembling Package...');
     
     // Copy Service Build (the code)
@@ -52,28 +59,32 @@ try {
     // Copy Client Build (static files) to public/
     fs.cpSync(path.join(DIRS.client, 'dist'), path.join(DIRS.stage, 'public'), { recursive: true });
 
-    // Copy System Configs (systemd, etc) from your source set
-    // Assuming you kept the structure created in the previous turn
-    const sysDist = path.join(DIRS.service, 'dist');
-    if (fs.existsSync(sysDist)) {
-        fs.cpSync(sysDist, DIRS.stage, { recursive: true });
-    }
+    // Copy systemd service file
+    fs.cpSync(path.join(DIRS.service, 'kiln-controller.service'), path.join(DIRS.stage, 'kiln-controller.service'));
 
-    // 5. Compress
+    // Copy default config
+    fs.cpSync(path.join(DIRS.service, 'config.json'), path.join(DIRS.stage, 'config.json'));
+
+    // Copy install script
+    fs.cpSync(path.join(__dirname, 'install.sh'), path.join(DIRS.stage, 'install.sh'));
+
+
+    // 6. Compress
     console.log('\n🗜️  Compressing...');
     run(`tar -czf ${CONFIG.packageName} -C stage .`);
 
-    // 6. Upload
+    // 7. Upload
     console.log(`\n🚀 Uploading to ${CONFIG.piHost}...`);
     run(`scp ${CONFIG.packageName} ${CONFIG.piUser}@${CONFIG.piHost}:~/`);
+    run(`scp ${path.join(DIRS.stage, 'install.sh')} ${CONFIG.piUser}@${CONFIG.piHost}:~/`);
 
-    // 7. Remote Execute
+
+    // 8. Remote Execute
     console.log(`\n🔌 Executing on Pi...`);
-    // Extract -> Fix Permissions (pi:pi) -> Install Dependencies (as pi) -> Restart Service
-    const remoteCmd = `sudo tar -xzf ${CONFIG.packageName} -C ${CONFIG.piTargetDir} && sudo chown -R pi:pi ${CONFIG.piTargetDir} && cd ${CONFIG.piTargetDir} && sudo -u pi npm install --omit=dev && sudo systemctl restart kiln-controller`;
+    const remoteCmd = `chmod +x ~/install.sh && sudo ~/install.sh`;
     run(`ssh ${CONFIG.piUser}@${CONFIG.piHost} "${remoteCmd}"`);
 
-    console.log(`\n✅ DEPLOYMENT COMPLETE.`);
+    console.log(`\n✅ DEPLOYMENT COMPLETE. Version: ${version}`);
 
 } catch (e) {
     console.error('\n❌ FAILED:', e.message);

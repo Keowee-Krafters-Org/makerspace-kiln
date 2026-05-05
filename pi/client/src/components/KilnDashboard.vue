@@ -33,6 +33,14 @@ const isStale = computed(() => {
   return (Date.now() - status.value.timestamp) > 15000 // 15 seconds
 })
 
+const activeProfileName = computed(() => {
+    if (status.value.profileId && profiles.value.length > 0) {
+        const activeProfile = profiles.value.find(p => p.id === status.value.profileId);
+        return activeProfile ? activeProfile.name : 'Unknown Profile';
+    }
+    return 'No Active Profile';
+});
+
 const countdown = computed(() => {
   if (status.value.timeRemaining === undefined || status.value.timeRemaining === null) return '00:00:00';
   // Check if value is likely in milliseconds (greater than 100 hours worth of seconds is unlikely for this kiln)
@@ -65,6 +73,7 @@ const statusIcon = computed(() => {
     'ABORTED': '🛑',
     'EMERGENCY_STOP': '🚨',
     'ERROR': '⚠️',
+    'RECONNECTING': '🔌',
     'UNKNOWN': '❓'
   };
   return map[status.value.state] || '❓';
@@ -165,6 +174,11 @@ onUnmounted(() => {
             <span class="status-text">{{ statusDescription }}</span>
           </div>
         </div>
+
+        <div class="profile-display">
+            <div class="status-label">ACTIVE PROFILE</div>
+            <div class="profile-name">{{ activeProfileName }}</div>
+        </div>
         
         <div class="header-controls">
            <select v-model="selectedProfileId" class="header-select">
@@ -236,6 +250,15 @@ onUnmounted(() => {
   border-bottom: 1px solid #333;
   padding-bottom: 12px;
   margin-bottom: 30px;
+  flex-wrap: wrap;
+}
+.profile-display {
+    text-align: center;
+}
+.profile-name {
+    font-size: 0.9em;
+    font-weight: bold;
+    color: #e1e1e1;
 }
 .status-display {
   text-align: center;
