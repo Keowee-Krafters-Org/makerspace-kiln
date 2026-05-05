@@ -5,7 +5,7 @@ const path = require('path');
 // --- Configuration ---
 const CONFIG = {
     piUser: 'csmith',
-    piHost: '192.168.1.63', // Update this
+    piHost: '10.10.10.109', // Update this
     piTargetDir: '/opt/makerspace-kiln',
     packageName: 'kiln-release.tar.gz'
 };

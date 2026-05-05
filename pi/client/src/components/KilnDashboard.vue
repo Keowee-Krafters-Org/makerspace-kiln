@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import axios from 'axios'
 import TestTempControl from './TestTempControl.vue'
 
@@ -24,7 +24,7 @@ const status = ref({
 const loading = ref(false)
 const message = ref('')
 const profiles = ref([])
-const selectedProfileId = ref(null)
+const selectedProfileId = ref(localStorage.getItem('selectedProfileId') || null);
 
 let eventSource = null
 
@@ -109,11 +109,20 @@ const handleTempUpdate = (newTemp) => {
   emit('update:testParams', { ...props.testParams, temperature: newTemp })
 }
 
+watch(selectedProfileId, (newId) => {
+    if (newId) {
+        localStorage.setItem('selectedProfileId', newId);
+    }
+});
+
 onMounted(async () => {
     try {
         const res = await axios.get('/api/profiles');
         profiles.value = res.data;
-        if (profiles.value.length > 0) {
+        const storedProfileId = localStorage.getItem('selectedProfileId');
+        if (storedProfileId && profiles.value.some(p => p.id == storedProfileI)) {
+            selectedProfileId.value = storedProfileId;
+        } else if (profiles.value.length > 0) {
             selectedProfileId.value = profiles.value[0].id;
         }
     } catch(e) {

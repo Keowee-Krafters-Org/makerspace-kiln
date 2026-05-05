@@ -15,6 +15,7 @@ export default {
 
     // Service Configuration
     statusInterval: 10000, // Poll status every 10 seconds
+    dbWriteInterval: 15000, // Write to db every 15 seconds
     serverPort: 3000,      // Port for the Web API
 
     // Web App Path (Changes based on environment)

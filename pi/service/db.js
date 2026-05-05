@@ -2,6 +2,7 @@ import { Low } from 'lowdb'
 import { JSONFile } from 'lowdb/node'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import config from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const file = join(__dirname, 'db.json');
@@ -72,7 +73,7 @@ class KilnDatabase {
         ...eventData,
         elapsedTime: elapsedTimeInSeconds
       });
-      if (!this.lastWrite || now - this.lastWrite > 1000) {
+      if (!this.lastWrite || now - this.lastWrite > config.dbWriteInterval) {
         await this.db.write();
         this.lastWrite = now;
       }
