@@ -3,12 +3,12 @@
   "version": "1.0.11",
   "description": "Root orchestration for Kiln Pi Appliance",
   "workspaces": [
-    "service",
-    "client"
+    "../service/local/pi",
+    "../client"
   ],
   "scripts": {
     "deploy": "node deploy.js",
-    "start": "npm run build -w client && npm start -w service",
+    "start": "npm run build -w client && npm start -w ../service/local/pi",
     "build": "npm run build -w client"
   },
   "devDependencies": {

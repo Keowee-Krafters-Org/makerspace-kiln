@@ -164,7 +164,13 @@ class KilnInterface {
     }
 
     stop() {
-        this.sendCommand({ command: 'stop' });
+        this.sendCommand('STOP');
+    }
+
+    setTargetTemperature(temp) {
+        // Format the command as "SET_TEMP,<temperature>"
+        const command = `SET_TEMP,${temp}`;
+        this.sendCommand(command);
     }
 
     /**

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 import axios from 'axios'
+import { API_URL } from '../api'
 
 const props = defineProps({
   temperature: Number
@@ -17,13 +18,16 @@ watch(() => props.temperature, (newVal) => {
 
 const setSimulatedTemp = async () => {
   try {
-    await axios.post('/api/test/temp', { temperature: localTemperature.value })
-    message.value = `Simulated temperature set to ${localTemperature.value}°C`
-    emit('update:temperature', localTemperature.value)
+    await axios.post(`${API_URL}/api/command`, { 
+      command: 'set-temperature',
+      payload: { temp: localTemperature.value }
+    });
+    message.value = `Simulated temperature set to ${localTemperature.value}°C`;
+    emit('update:temperature', localTemperature.value);
   } catch (err) {
-    message.value = 'Error setting simulated temperature'
+    message.value = 'Error setting simulated temperature';
   }
-}
+};
 </script>
 
 <template>

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import { API_URL } from '../api'
 
 const profiles = ref([])
 const currentProfile = ref(null)
@@ -9,7 +10,7 @@ const message = ref('')
 
 const fetchProfiles = async () => {
   try {
-    const res = await axios.get('/api/profiles')
+    const res = await axios.get(`${API_URL}/api/profiles`)
     profiles.value = res.data
   } catch (e) {
     console.error(e)
@@ -35,16 +36,16 @@ const editProfile = (profile) => {
 
 const deleteProfile = async (id) => {
   if (!confirm('Are you sure?')) return
-  await axios.delete(`/api/profiles/${id}`)
+  await axios.delete(`${API_URL}/api/profiles/${id}`)
   fetchProfiles()
 }
 
 const saveProfile = async () => {
   try {
     if (currentProfile.value.id) {
-      await axios.put(`/api/profiles/${currentProfile.value.id}`, currentProfile.value)
+      await axios.put(`${API_URL}/api/profiles/${currentProfile.value.id}`, currentProfile.value)
     } else {
-      await axios.post('/api/profiles', currentProfile.value)
+      await axios.post(`${API_URL}/api/profiles`, currentProfile.value)
     }
     isEditing.value = false
     message.value = 'Saved!'

@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import axios from 'axios'
 import TestTempControl from './TestTempControl.vue'
+import { API_URL } from '../api'
 
 const props = defineProps({
   testParams: Object,
@@ -98,19 +99,22 @@ const startKiln = async () => {
         return;
     }
   try {
-    await axios.post('/api/start', { profileId: selectedProfileId.value })
-    message.value = 'Start command sent'
+    await axios.post(`${API_URL}/api/command`, { 
+      command: 'start',
+      payload: { profileId: selectedProfileId.value }
+    });
+    message.value = 'Start command sent';
   } catch (err) {
-    message.value = 'Error sending start'
+    message.value = 'Error sending start';
   }
 }
 
 const stopKiln = async () => {
   try {
-    await axios.post('/api/stop')
-    message.value = 'Stop command sent'
+    await axios.post(`${API_URL}/api/command`, { command: 'stop' });
+    message.value = 'Stop command sent';
   } catch (err) {
-    message.value = 'Error sending stop'
+    message.value = 'Error sending stop';
   }
 }
 
@@ -126,7 +130,7 @@ watch(selectedProfileId, (newId) => {
 
 onMounted(async () => {
     try {
-        const res = await axios.get('/api/profiles');
+        const res = await axios.get(`${API_URL}/api/profiles`);
         profiles.value = res.data;
         const storedProfileId = localStorage.getItem('selectedProfileId');
         if (storedProfileId && profiles.value.some(p => p.id == storedProfileI)) {
@@ -139,7 +143,7 @@ onMounted(async () => {
     }
 
   // Setup SSE
-  eventSource = new EventSource('/api/events');
+  eventSource = new EventSource(`${API_URL}/api/events`);
   
   eventSource.onmessage = (event) => {
     try {

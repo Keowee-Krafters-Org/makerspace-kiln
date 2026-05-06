@@ -7,10 +7,11 @@
   "scripts": {
     "start": "node index.js",
     "start:prod": "NODE_ENV=production node index.js",
+    "start:sim": "node index.js --simulate",
+    "start:sim:alt": "node index.js --simulate --port=3000",
     "build": "vite build"
   },
   "dependencies": {
-    "cors": "^2.8.5",
     "express": "^4.18.2",
     "lowdb": "^7.0.1",
     "serialport": "^12.0.0"

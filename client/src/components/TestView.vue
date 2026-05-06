@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import axios from 'axios'
+import { API_URL } from '../api'
 
 const props = defineProps({
   testParams: Object
@@ -12,7 +13,7 @@ const message = ref('')
 
 const startTest = async () => {
   try {
-    await axios.post('/api/test', props.testParams)
+    await axios.post(`${API_URL}/api/test`, props.testParams)
     message.value = 'Test mode initiated'
   } catch (err) {
     message.value = 'Error initiating test mode'

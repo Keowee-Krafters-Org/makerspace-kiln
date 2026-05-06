@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import { API_URL } from '../api'
 
 const sessions = ref([])
 const loading = ref(false)
@@ -11,7 +12,7 @@ const fetchHistory = async () => {
   loading.value = true
   error.value = null
   try {
-    const response = await axios.get('/api/history')
+    const response = await axios.get(`${API_URL}/api/history`)
     sessions.value = response.data
   } catch (err) {
     console.error('Error fetching history:', err)
@@ -26,7 +27,7 @@ const clearHistory = async () => {
     return
   }
   try {
-    await axios.delete('/api/history')
+    await axios.delete(`${API_URL}/api/history`)
     await fetchHistory() // Refresh the list
   } catch (err) {
     console.error('Error clearing history:', err)
