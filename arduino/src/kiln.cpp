@@ -22,8 +22,8 @@ unsigned long totalProfileDuration = 0; // Total estimated duration in ms
 
 double setpoint = 0, input = 0, output = 0;
 // Tuning for seconds-based window output (0-10000ms)
-// Kp=1000 means 10 degrees error gives 10000ms output (Full ON)
-double Kp=1000, Ki=10, Kd=100;
+// Kp=250 means 40 degrees error gives 10000ms output (Full ON)
+double Kp=250, Ki=2, Kd=400;
 PID kilnPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 Adafruit_MAX31855 thermocouple(CLK, CS, DO);
 
