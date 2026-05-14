@@ -49,6 +49,8 @@ const unsigned long REPORT_INTERVAL = 2000;
 bool ssrUpperOn = false;
 bool ssrLowerOn = false;
 
+int nan_count = 0;
+
 // LED
 unsigned long ledLastChangeTime = 0;
 bool ledState = HIGH;
@@ -92,7 +94,12 @@ void loop() {
     }
     
     if (isnan(input)) {
-        currentState = EMERGENCY_STOP;
+        nan_count++;
+        if (nan_count > 10) {
+            currentState = EMERGENCY_STOP;
+        }
+    } else {
+        nan_count = 0;
     }
 
     // 2. Serial Commands
