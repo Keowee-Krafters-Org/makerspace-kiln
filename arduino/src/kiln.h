@@ -22,7 +22,7 @@ struct ProfileStep {
 };
 
 struct Profile {
-    long id;
+    char id[21]; // Changed from long long to char array for large numbers
     char name[64];
     int stepCount;
     ProfileStep steps[MAX_PROFILE_STEPS];
