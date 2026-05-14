@@ -258,18 +258,15 @@ void handleCommand(JsonDocument& doc) {
 
     if (strcmp(cmd, "profile") == 0) {
         // Parse ID and Name
+        // Default to "0" if no ID provided, to ensure we always have a string ID
+        activeProfile.id[0] = '0';
+        activeProfile.id[1] = '\0';
         if (doc.containsKey("id")) {
             const char* idStr = doc["id"].as<const char*>();
             if (idStr) {
                 strlcpy(activeProfile.id, idStr, sizeof(activeProfile.id));
-            } else {
-                activeProfile.id[0] = '0';
-                activeProfile.id[1] = '\0';
-            }
-        } else {
-            activeProfile.id[0] = '0';
-            activeProfile.id[1] = '\0';
-        }
+            } 
+        } 
         strlcpy(activeProfile.name, doc["name"] | "Unnamed", sizeof(activeProfile.name));
 
         JsonArray steps = doc["steps"];
