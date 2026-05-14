@@ -27,9 +27,57 @@ const serverPort = portArg ? parseInt(portArg.split('=')[1], 10) : config.server
 let clients = [];
 let latestStatus = { state: 'UNKNOWN', timestamp: 0 };
 
+// --- Event-Driven Webhook ---
+const postStatusToWebhook = async (status) => {
+    if (!config.webhook.url) return;
+
+    try {
+        const response = await fetch(config.webhook.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(status),
+        });
+
+        if (response.ok) {
+            const { pendingCommand } = await response.json();
+            if (pendingCommand) {
+                console.log('Received command from remote service:', pendingCommand);
+                const { command, payload } = pendingCommand;
+                switch (command) {
+                    case 'start':
+                        kilnInterface.start();
+                        break;
+                    case 'stop':
+                        kilnInterface.stop();
+                        break;
+                    case 'set-temperature':
+                        if (payload && typeof payload.temp === 'number') {
+                            kilnInterface.setTargetTemperature(payload.temp);
+                        }
+                        break;
+                    default:
+                        console.log(`Unknown command received from remote: ${command}`);
+                }
+            }
+        } else {
+            console.error(`Webhook failed: ${response.statusText}`);
+        }
+    } catch (error) {
+        if (error instanceof FetchError && error.type === 'invalid-json') {
+            // This is expected if there's no command, the remote server sends an empty 200 OK
+            // console.log('Webhook response had no command.');
+        } else {
+            console.error(`Error sending webhook: ${error.message}`);
+        }
+    }
+};
+
 const sendEventsToAll = (data) => {
     latestStatus = { ...data, timestamp: Date.now() };
+    // Send to all connected SSE clients
     clients.forEach(client => client.res.write(`data: ${JSON.stringify(latestStatus)}\n\n`));
+    // Post status to remote webhook
+    postStatusToWebhook(latestStatus);
 };
 
 let kilnInterface;
@@ -105,37 +153,6 @@ app.post('/api/command', (req, res) => {
         res.status(500).send({ message: 'An error occurred while executing the command.' });
     }
 });
-
-// --- Webhook Status Publisher ---
-if (config.webhook.url) {
-    setInterval(async () => {
-        try {
-            const response = await fetch(config.webhook.url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(latestStatus),
-            });
-
-            if (response.ok) {
-                const { pendingCommand } = await response.json();
-                if (pendingCommand) {
-                    console.log('Received command from remote service:', pendingCommand);
-                    // TODO: Implement command handling logic
-                    // Example: kilnInterface.sendCommand(pendingCommand);
-                }
-            } else {
-                console.error(`Webhook failed: ${response.statusText}`);
-            }
-        } catch (error) {
-            if (error instanceof FetchError && error.type === 'invalid-json') {
-                console.log('Remote service responded with invalid JSON. No command to process.');
-            } else {
-                console.error(`Error sending webhook: ${error.message}`);
-            }
-        }
-    }, config.webhook.interval);
-}
-
 
 // API endpoints for control
 app.get('/api/profiles', async (req, res) => {

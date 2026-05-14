@@ -1,166 +1,72 @@
 import { SerialPort } from 'serialport';
 import { ReadlineParser } from '@serialport/parser-readline';
-import kilnDatabase from './db.js';
+import { EventEmitter } from 'events';
 
-class KilnInterface {
-    constructor(portPath, baudRate = 9600) {
+class KilnInterface extends EventEmitter {
+    constructor(portPath, baudRate) {
+        super();
         this.portPath = portPath;
         this.baudRate = baudRate;
         this.port = null;
         this.parser = null;
-        this.onStatusCallback = null;
-        this.lastState = null;
-        this.activeSessionId = null;
-        this.isConnecting = false;
-        this.reconnectInterval = null;
     }
 
     connect() {
-        // If a reconnect interval is running, clear it.
-        if (this.reconnectInterval) {
-            clearInterval(this.reconnectInterval);
-            this.reconnectInterval = null;
-        }
-
-        // Prevent multiple concurrent connection attempts
-        if (this.isConnecting || (this.port && this.port.isOpen)) {
-            return Promise.resolve();
-        }
-        this.isConnecting = true;
-        
-        console.log(`Attempting to connect to kiln on ${this.portPath}...`);
-
         return new Promise((resolve, reject) => {
             this.port = new SerialPort({ path: this.portPath, baudRate: this.baudRate }, (err) => {
-                this.isConnecting = false;
                 if (err) {
-                    console.error(`Failed to open port ${this.portPath}:`, err.message);
-                    this.scheduleReconnect();
+                    console.error('Error opening port:', err.message);
                     return reject(err);
                 }
             });
 
+            this.parser = this.port.pipe(new ReadlineParser({ delimiter: '\n' }));
+
+            this.port.on('open', () => {
+                console.log('Serial port opened.');
+                resolve();
+            });
+
+            this.parser.on('data', (data) => {
+                try {
+                    const status = JSON.parse(data);
+                    this.emit('status', status); // Emit the status event
+                } catch (e) {
+                    console.error('Error parsing JSON from serial:', e);
+                    // Also emit an error event for the main app to potentially handle
+                    this.emit('error', new Error('Invalid JSON from device'));
+                }
+            });
+
             this.port.on('error', (err) => {
-                console.error('Serial Port Error:', err.message);
+                console.error('Serial port error:', err.message);
+                this.emit('error', err); // Forward the error
+                reject(err);
             });
 
             this.port.on('close', () => {
-                console.log('Serial port closed. Attempting to reconnect...');
-                this.port = null; // Discard the old port object
-                this.scheduleReconnect();
-            });
-
-            this.parser = this.port.pipe(new ReadlineParser({ delimiter: '\r\n' }));
-            
-            this.parser.on('data', (data) => {
-                if (!data || data.trim() === '') return;
-                try {
-                    const json = JSON.parse(data);
-                    this.handleData(json);
-                } catch (e) {
-                    console.log('Raw Serial Data:', data); 
-                }
-            });
-
-            this.port.on('open', () => {
-                this.isConnecting = false;
-                console.log(`Connected to kiln on ${this.portPath}`);
-                if (this.reconnectInterval) {
-                    clearInterval(this.reconnectInterval);
-                    this.reconnectInterval = null;
-                }
-                setTimeout(resolve, 2000); 
+                console.log('Serial port closed.');
+                this.emit('close'); // Let the main app know the port closed
             });
         });
     }
 
-    scheduleReconnect() {
-        if (this.reconnectInterval) return; // Reconnect already scheduled
-
-        if (this.onStatusCallback) {
-            this.onStatusCallback({ state: 'RECONNECTING', message: 'Attempting to reconnect to Arduino...' });
-        }
-
-        this.reconnectInterval = setInterval(() => {
-            this.connect().catch(() => {
-                // Errors are logged in connect(), just need to catch to prevent unhandled rejections
+    sendCommand(command) {
+        if (this.port && this.port.isOpen) {
+            this.port.write(command + '\n', (err) => {
+                if (err) {
+                    console.error('Error writing to port:', err.message);
+                } else {
+                    console.log('Command sent:', command);
+                }
             });
-        }, 5000); // Retry every 5 seconds
-    }
-
-    async handleData(data) {
-        // If it's a command response, just pass it to the callback and exit.
-        if (data.status === 'ok' || data.status === 'error') {
-            if (this.onStatusCallback) {
-                this.onStatusCallback(data);
-            } else {
-                console.log('Received Command Response:', data);
-            }
-            return;
-        }
-
-        // If it's a status report, pass it to the callback
-        if (this.onStatusCallback) {
-            this.onStatusCallback(data);
         } else {
-            console.log('Received:', data);
+            console.error('Cannot send command: port is not open.');
         }
-
-        // --- Session Management ---
-        const currentState = data.state;
-        if (currentState && currentState !== this.lastState) {
-            // STARTING a new session
-            if (currentState === 'STARTING') {
-                const newSession = await kilnDatabase.createSession();
-                this.activeSessionId = newSession.id;
-                console.log(`[SESSION] Started new session: ${this.activeSessionId}`);
-            }
-
-            // ENDING a session
-            const isStopping = currentState === 'COMPLETED' || currentState === 'ABORTED' || currentState === 'EMERGENCY_STOP';
-            if (this.activeSessionId && isStopping) {
-                const finalStatus = currentState;
-                console.log(`[SESSION] Ending session: ${this.activeSessionId} with status: ${finalStatus}`);
-                await kilnDatabase.endSession(this.activeSessionId, finalStatus);
-                this.activeSessionId = null;
-            }
-        }
-
-        // Add event to active session
-        if (this.activeSessionId && data.state) {
-            await kilnDatabase.addSessionEvent(this.activeSessionId, data);
-        }
-
-        this.lastState = currentState;
     }
-
-    onStatus(callback) {
-        this.onStatusCallback = callback;
-    }
-
-    sendCommand(commandObj) {
-        if (!this.port || !this.port.isOpen) {
-            console.error('Port not open, cannot send command:', commandObj);
-            // Optionally, notify the frontend that the command could not be sent.
-            if (this.onStatusCallback) {
-                this.onStatusCallback({ state: 'ERROR', message: 'Cannot send command. Port is not open.' });
-            }
-            return;
-        }
-
-        const json = JSON.stringify(commandObj);
-        console.log('Sending:', json);
-        this.port.write(json + '\n', (err) => {
-            if (err) {
-                return console.log('Error on write: ', err.message);
-            }
-        });
-    }
-
-    // --- High Level Commands mapping to kiln.cpp ---
 
     start() {
-        this.sendCommand({ command: 'start' });
+        this.sendCommand('START');
     }
 
     stop() {
@@ -171,43 +77,6 @@ class KilnInterface {
         // Format the command as "SET_TEMP,<temperature>"
         const command = `SET_TEMP,${temp}`;
         this.sendCommand(command);
-    }
-
-    /**
-     * Set the kiln profile
-     * @param {Object} profile - Full profile object with steps
-     */
-    setProfile(profile) {
-        console.log('Setting profile:', JSON.stringify(profile, null, 2));
-        
-        const cmd = {
-            command: 'profile',
-            id: profile.id,
-            name: profile.name,
-            steps: profile.steps.map(s => ({
-                type: s.type || s.mode || 'IDLE',
-                targetTemperature: s.targetTemperature,
-                duration: s.duration,
-                rate: s.rate
-            }))
-        };
-        
-        this.sendCommand(cmd);
-    }
-
-    getStatus() {
-        this.sendCommand({ command: 'status' });
-    }
-
-    testInput(temperature, duration, setPoint) {
-        const cmd = {
-            command: 'testInput',
-            temperature: temperature
-        };
-        if (duration !== undefined) cmd.duration = duration;
-        if (setPoint !== undefined) cmd.setPoint = setPoint;
-        
-        this.sendCommand(cmd);
     }
 }
 
