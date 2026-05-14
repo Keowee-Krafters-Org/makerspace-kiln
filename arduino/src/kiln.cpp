@@ -263,14 +263,16 @@ void handleCommand(JsonDocument& doc) {
 
         JsonArray steps = doc["steps"];
         activeProfile.stepCount = 0;
-        for(JsonObject s : steps) {
-            if (activeProfile.stepCount >= MAX_PROFILE_STEPS) break;
-            ProfileStep& ps = activeProfile.steps[activeProfile.stepCount];
-            ps.type = parseStateString(s["type"]);
-            ps.targetTemperature = s["targetTemperature"]; // float
-            ps.duration = s["duration"]; // int (minutes)
-            ps.rate = s["rate"]; // float (deg/hr)
-            activeProfile.stepCount++;
+        if (steps) {
+            for(JsonObject s : steps) {
+                if (activeProfile.stepCount >= MAX_PROFILE_STEPS) break;
+                ProfileStep& ps = activeProfile.steps[activeProfile.stepCount];
+                ps.type = parseStateString(s["type"]);
+                ps.targetTemperature = s["targetTemperature"]; // float
+                ps.duration = s["duration"]; // int (minutes)
+                ps.rate = s["rate"]; // float (deg/hr)
+                activeProfile.stepCount++;
+            }
         }
         currentStepIndex = 0;
         currentState = IDLE;
