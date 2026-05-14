@@ -258,12 +258,7 @@ void handleCommand(JsonDocument& doc) {
 
     if (strcmp(cmd, "profile") == 0) {
         // Parse ID and Name
-        activeProfile.id = doc["id"].as<long>();
-        if (doc["id"]) {
-            activeProfile.id = doc["id"].as<long>();
-        } else {
-            activeProfile.id = 0;
-        }
+        activeProfile.id = doc["id"];
         strlcpy(activeProfile.name, doc["name"] | "Unnamed", sizeof(activeProfile.name));
 
         JsonArray steps = doc["steps"];
