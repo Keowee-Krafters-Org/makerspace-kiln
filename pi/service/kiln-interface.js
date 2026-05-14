@@ -187,7 +187,7 @@ class KilnInterface {
         
         const cmd = {
             command: 'profile',
-            id: profile.id,
+            id: String(profile.id), // Ensure ID is a string
             name: profile.name,
             steps: profile.steps.map(s => ({
                 type: s.type || s.mode || 'IDLE',

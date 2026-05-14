@@ -35,7 +35,8 @@ const isStale = computed(() => {
 
 const activeProfileName = computed(() => {
     if (status.value.profileId && profiles.value.length > 0) {
-        const activeProfile = profiles.value.find(p => p.id === status.value.profileId);
+        const profileId = parseInt(status.value.profileId, 10);
+        const activeProfile = profiles.value.find(p => p.id === profileId);
         return activeProfile ? activeProfile.name : 'Unknown Profile';
     }
     return 'No Active Profile';
@@ -129,7 +130,7 @@ onMounted(async () => {
         const res = await axios.get('/api/profiles');
         profiles.value = res.data;
         const storedProfileId = localStorage.getItem('selectedProfileId');
-        if (storedProfileId && profiles.value.some(p => p.id == storedProfileI)) {
+        if (storedProfileId && profiles.value.some(p => p.id == storedProfileId)) {
             selectedProfileId.value = storedProfileId;
         } else if (profiles.value.length > 0) {
             selectedProfileId.value = profiles.value[0].id;
