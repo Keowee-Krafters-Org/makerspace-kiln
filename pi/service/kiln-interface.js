@@ -9,7 +9,7 @@ class KilnInterface {
         this.port = null;
         this.parser = null;
         this.onStatusCallback = null;
-        this.lastState = null;
+        this.lastState = 'IDLE'; // Initialize to IDLE
         this.activeSessionId = null;
         this.isConnecting = false;
         this.reconnectInterval = null;
@@ -65,6 +65,7 @@ class KilnInterface {
             this.port.on('open', () => {
                 this.isConnecting = false;
                 console.log(`Connected to kiln on ${this.portPath}`);
+                this.lastState = 'IDLE'; // Reset state on connect
                 if (this.reconnectInterval) {
                     clearInterval(this.reconnectInterval);
                     this.reconnectInterval = null;
@@ -89,6 +90,11 @@ class KilnInterface {
     }
 
     async handleData(data) {
+        // Ignore invalid or unknown states
+        if (!data.state || data.state === 'UNKNOWN') {
+            return;
+        }
+
         // If it's a command response, just pass it to the callback and exit.
         if (data.status === 'ok' || data.status === 'error') {
             if (this.onStatusCallback) {
@@ -109,11 +115,14 @@ class KilnInterface {
         // --- Session Management ---
         const currentState = data.state;
         if (currentState && currentState !== this.lastState) {
+            console.log(`[STATE CHANGE] ${this.lastState} -> ${currentState}`);
+
             // STARTING a new session
-            if (currentState === 'STARTING') {
-                const newSession = await kilnDatabase.createSession();
+            const isStarting = this.lastState === 'IDLE' && (currentState === 'RAMP' || currentState === 'PREHEAT' || currentState === 'SOAK');
+            if (!this.activeSessionId && isStarting) {
+                const newSession = await kilnDatabase.createSession(data.profileId);
                 this.activeSessionId = newSession.id;
-                console.log(`[SESSION] Started new session: ${this.activeSessionId}`);
+                console.log(`[SESSION] Started new session: ${this.activeSessionId} for profile ${data.profileId}`);
             }
 
             // ENDING a session
@@ -123,6 +132,8 @@ class KilnInterface {
                 console.log(`[SESSION] Ending session: ${this.activeSessionId} with status: ${finalStatus}`);
                 await kilnDatabase.endSession(this.activeSessionId, finalStatus);
                 this.activeSessionId = null;
+                this.lastState = "IDLE"; // Explicitly reset state after stop
+                return; // Stop further processing for this event
             }
         }
 

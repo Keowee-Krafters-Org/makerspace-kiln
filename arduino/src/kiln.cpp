@@ -258,7 +258,7 @@ void handleCommand(JsonDocument& doc) {
 
     if (strcmp(cmd, "profile") == 0) {
         // Parse ID and Name
-        activeProfile.id = doc["id"] | 0;
+        activeProfile.id = doc["id"].as<long>();
         strlcpy(activeProfile.name, doc["name"] | "Unnamed", sizeof(activeProfile.name));
 
         JsonArray steps = doc["steps"];
@@ -277,6 +277,7 @@ void handleCommand(JsonDocument& doc) {
         currentStepIndex = 0;
         currentState = IDLE;
         response["message"] = "Profile loaded";
+        response["profileId"] = activeProfile.id;
     } 
     else if (strcmp(cmd, "start") == 0) {
         if (activeProfile.stepCount > 0) {

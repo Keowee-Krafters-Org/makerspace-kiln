@@ -67,6 +67,6 @@
   "preferences": {
     "temperatureUnits": "C",
     "defaultProfile": 1,
-    "logLevel": "quiet"
+    "logLevel": "verbose"
   }
 }

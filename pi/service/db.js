@@ -48,9 +48,10 @@ class KilnDatabase {
    * Creates a new session in the history database.
    * @returns {object} The new session object.
    */
-  async createSession() {
+  async createSession(profileId) {
     const newSession = {
       id: Date.now(),
+      profileId: profileId,
       startTime: new Date().toISOString(),
       endTime: null,
       status: 'RUNNING',
