@@ -3,7 +3,7 @@
 #define VERSION "0.2.0"
 #include <Arduino.h>
 #include <PID_v1.h>
-#include <Adafruit_MAX31855.h>
+#include <Adafruit_MAX31856.h>
 #include <ArduinoJson.h> 
 
 

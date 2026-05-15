@@ -1,16 +1,16 @@
 import d, { dirname as R } from "path";
-import { fileURLToPath as D } from "url";
+import { fileURLToPath as b } from "url";
 import { Low as S } from "lowdb";
 import "node:fs";
 import { writeFile as j, rename as $, readFile as A } from "node:fs/promises";
 import { join as m, dirname as v, basename as _ } from "node:path";
 import { fileURLToPath as P } from "node:url";
 import { SerialPort as k } from "serialport";
-import x from "stream";
+import L from "stream";
 import g from "express";
-import L from "cors";
-const F = D(import.meta.url), y = d.dirname(F), b = process.env.NODE_ENV === "production", f = {
-  isProduction: b,
+import x from "cors";
+const F = b(import.meta.url), y = d.dirname(F), D = process.env.NODE_ENV === "production", f = {
+  isProduction: D,
   // Serial Port Configuration
   // On Linux/RPi this is often /dev/ttyACM0 or /dev/ttyUSB0
   // On Windows this might be COM3, COM4, etc.
@@ -26,26 +26,26 @@ const F = D(import.meta.url), y = d.dirname(F), b = process.env.NODE_ENV === "pr
   // Web App Path (Changes based on environment)
   // Production (Pi): './public' (bundled as sibling to index.js)
   // Development Local: '../client/dist' (relative to source index.js)
-  clientPath: b ? d.join(y, "public") : d.join(y, "../client/dist")
+  clientPath: D ? d.join(y, "public") : d.join(y, "../client/dist")
   // Future: Google AppScript Configuration
   // cloudApiUrl: 'https://script.google.com/macros/s/...'
 };
-function q(i) {
+function M(i) {
   const e = i instanceof URL ? P(i) : i.toString();
   return m(v(e), `.${_(e)}.tmp`);
 }
-async function M(i, e, t) {
+async function q(i, e, t) {
   for (let s = 0; s < e; s++)
     try {
       return await i();
     } catch (n) {
       if (s < e - 1)
-        await new Promise((a) => setTimeout(a, t));
+        await new Promise((o) => setTimeout(o, t));
       else
         throw n;
     }
 }
-class B {
+class H {
   #e;
   #t;
   #s = !1;
@@ -65,7 +65,7 @@ class B {
   async #c(e) {
     this.#s = !0;
     try {
-      await j(this.#t, e, "utf-8"), await M(async () => {
+      await j(this.#t, e, "utf-8"), await q(async () => {
         await $(this.#t, this.#e);
       }, 10, 100), this.#n?.[0]();
     } catch (t) {
@@ -78,17 +78,17 @@ class B {
     }
   }
   constructor(e) {
-    this.#e = e, this.#t = q(e);
+    this.#e = e, this.#t = M(e);
   }
   async write(e) {
     return this.#s ? this.#a(e) : this.#c(e);
   }
 }
-class G {
+class W {
   #e;
   #t;
   constructor(e) {
-    this.#e = e, this.#t = new B(e);
+    this.#e = e, this.#t = new H(e);
   }
   async read() {
     let e;
@@ -105,12 +105,12 @@ class G {
     return this.#t.write(e);
   }
 }
-class W {
+class B {
   #e;
   #t;
   #s;
   constructor(e, { parse: t, stringify: s }) {
-    this.#e = new G(e), this.#t = t, this.#s = s;
+    this.#e = new W(e), this.#t = t, this.#s = s;
   }
   async read() {
     const e = await this.#e.read();
@@ -120,7 +120,7 @@ class W {
     return this.#e.write(this.#s(e));
   }
 }
-class I extends W {
+class I extends B {
   constructor(e) {
     super(e, {
       parse: JSON.parse,
@@ -128,27 +128,28 @@ class I extends W {
     });
   }
 }
-const H = v(P(import.meta.url)), T = process.env.NODE_ENV === "production" ? "/var/lib/kiln-controller" : H, J = m(T, "history.json"), U = m(T, "config.json"), K = new I(J), V = new I(U), E = { sessions: [] }, C = { profiles: [], preferences: {} };
+const G = v(P(import.meta.url)), E = process.env.NODE_ENV === "production" ? "/var/lib/kiln-controller" : G, U = m(E, "history.json"), J = m(E, "config.json"), K = new I(U), V = new I(J), T = { sessions: [] }, C = { profiles: [], preferences: {} };
 class Y {
   constructor(e, t, s, n) {
     this.historyDb = new S(e, s), this.configDb = new S(t, n), this.lastWrite = null;
   }
   async init() {
-    return await this.historyDb.read(), await this.configDb.read(), this.historyDb.data || (this.historyDb.data = E), this.configDb.data || (this.configDb.data = C), await this.historyDb.write(), await this.configDb.write(), this;
+    return await this.historyDb.read(), await this.configDb.read(), this.historyDb.data || (this.historyDb.data = T), this.configDb.data || (this.configDb.data = C), await this.historyDb.write(), await this.configDb.write(), this;
   }
   /**
    * Creates a new session in the history database.
    * @returns {object} The new session object.
    */
-  async createSession() {
-    const e = {
+  async createSession(e) {
+    const t = {
       id: Date.now(),
+      profileId: e,
       startTime: (/* @__PURE__ */ new Date()).toISOString(),
       endTime: null,
       status: "RUNNING",
       events: []
     };
-    return this.historyDb.data.sessions.unshift(e), await this.historyDb.write(), e;
+    return this.historyDb.data.sessions.unshift(t), await this.historyDb.write(), t;
   }
   // --- Profile Management (in configDb) ---
   async getProfiles() {
@@ -183,11 +184,11 @@ class Y {
   async addSessionEvent(e, t) {
     const s = this.historyDb.data.sessions.find((n) => n.id === e);
     if (s) {
-      const n = new Date(s.startTime), a = /* @__PURE__ */ new Date(), N = Math.round((a - n) / 1e3);
+      const n = new Date(s.startTime), o = /* @__PURE__ */ new Date(), O = Math.round((o - n) / 1e3);
       s.events.push({
         ...t,
-        elapsedTime: N
-      }), (!this.lastWrite || a - this.lastWrite > f.dbWriteInterval) && (await this.historyDb.write(), this.lastWrite = a);
+        elapsedTime: O
+      }), (!this.lastWrite || o - this.lastWrite > f.dbWriteInterval) && (await this.historyDb.write(), this.lastWrite = o);
     }
   }
   async flush() {
@@ -209,16 +210,16 @@ class Y {
     this.historyDb.data.sessions = [], await this.historyDb.write();
   }
 }
-const r = await new Y(
+const a = await new Y(
   K,
   V,
-  E,
+  T,
   C
 ).init();
 var w = {}, p = {};
 Object.defineProperty(p, "__esModule", { value: !0 });
 p.DelimiterParser = void 0;
-const z = x;
+const z = L;
 class Q extends z.Transform {
   includeDelimiter;
   delimiter;
@@ -231,9 +232,9 @@ class Q extends z.Transform {
     this.includeDelimiter = t, this.delimiter = Buffer.from(e), this.buffer = Buffer.alloc(0);
   }
   _transform(e, t, s) {
-    let n = Buffer.concat([this.buffer, e]), a;
-    for (; (a = n.indexOf(this.delimiter)) !== -1; )
-      this.push(n.slice(0, a + (this.includeDelimiter ? this.delimiter.length : 0))), n = n.slice(a + this.delimiter.length);
+    let n = Buffer.concat([this.buffer, e]), o;
+    for (; (o = n.indexOf(this.delimiter)) !== -1; )
+      this.push(n.slice(0, o + (this.includeDelimiter ? this.delimiter.length : 0))), n = n.slice(o + this.delimiter.length);
     this.buffer = n, s();
   }
   _flush(e) {
@@ -242,7 +243,7 @@ class Q extends z.Transform {
 }
 p.DelimiterParser = Q;
 Object.defineProperty(w, "__esModule", { value: !0 });
-var O = w.ReadlineParser = void 0;
+var N = w.ReadlineParser = void 0;
 const X = p;
 class Z extends X.DelimiterParser {
   constructor(e) {
@@ -255,10 +256,10 @@ class Z extends X.DelimiterParser {
     typeof t.delimiter == "string" && (t.delimiter = Buffer.from(t.delimiter, t.encoding)), super(t);
   }
 }
-O = w.ReadlineParser = Z;
+N = w.ReadlineParser = Z;
 class ee {
   constructor(e, t = 9600) {
-    this.portPath = e, this.baudRate = t, this.port = null, this.parser = null, this.onStatusCallback = null, this.lastState = null, this.activeSessionId = null, this.isConnecting = !1, this.reconnectInterval = null;
+    this.portPath = e, this.baudRate = t, this.port = null, this.parser = null, this.onStatusCallback = null, this.lastState = "IDLE", this.activeSessionId = null, this.isConnecting = !1, this.reconnectInterval = null;
   }
   connect() {
     return this.reconnectInterval && (clearInterval(this.reconnectInterval), this.reconnectInterval = null), this.isConnecting || this.port && this.port.isOpen ? Promise.resolve() : (this.isConnecting = !0, console.log(`Attempting to connect to kiln on ${this.portPath}...`), new Promise((e, t) => {
@@ -269,7 +270,7 @@ class ee {
         console.error("Serial Port Error:", s.message);
       }), this.port.on("close", () => {
         console.log("Serial port closed. Attempting to reconnect..."), this.port = null, this.scheduleReconnect();
-      }), this.parser = this.port.pipe(new O({ delimiter: `\r
+      }), this.parser = this.port.pipe(new N({ delimiter: `\r
 ` })), this.parser.on("data", (s) => {
         if (!(!s || s.trim() === ""))
           try {
@@ -279,7 +280,7 @@ class ee {
             console.log("Raw Serial Data:", s);
           }
       }), this.port.on("open", () => {
-        this.isConnecting = !1, console.log(`Connected to kiln on ${this.portPath}`), this.reconnectInterval && (clearInterval(this.reconnectInterval), this.reconnectInterval = null), setTimeout(e, 2e3);
+        this.isConnecting = !1, console.log(`Connected to kiln on ${this.portPath}`), this.lastState = "IDLE", this.reconnectInterval && (clearInterval(this.reconnectInterval), this.reconnectInterval = null), setTimeout(e, 2e3);
       });
     }));
   }
@@ -290,6 +291,8 @@ class ee {
     }, 5e3));
   }
   async handleData(e) {
+    if (!e.state || e.state === "UNKNOWN")
+      return;
     if (e.status === "ok" || e.status === "error") {
       this.onStatusCallback ? this.onStatusCallback(e) : console.log("Received Command Response:", e);
       return;
@@ -297,17 +300,20 @@ class ee {
     this.onStatusCallback ? this.onStatusCallback(e) : console.log("Received:", e);
     const t = e.state;
     if (t && t !== this.lastState) {
-      if (t === "STARTING") {
-        const n = await r.createSession();
-        this.activeSessionId = n.id, console.log(`[SESSION] Started new session: ${this.activeSessionId}`);
+      console.log(`[STATE CHANGE] ${this.lastState} -> ${t}`);
+      const s = this.lastState === "IDLE" && (t === "RAMP" || t === "PREHEAT" || t === "SOAK");
+      if (!this.activeSessionId && s) {
+        const o = await a.createSession(e.profileId);
+        this.activeSessionId = o.id, console.log(`[SESSION] Started new session: ${this.activeSessionId} for profile ${e.profileId}`);
       }
-      const s = t === "COMPLETED" || t === "ABORTED" || t === "EMERGENCY_STOP";
-      if (this.activeSessionId && s) {
-        const n = t;
-        console.log(`[SESSION] Ending session: ${this.activeSessionId} with status: ${n}`), await r.endSession(this.activeSessionId, n), this.activeSessionId = null;
+      const n = t === "COMPLETED" || t === "ABORTED" || t === "EMERGENCY_STOP";
+      if (this.activeSessionId && n) {
+        const o = t;
+        console.log(`[SESSION] Ending session: ${this.activeSessionId} with status: ${o}`), await a.endSession(this.activeSessionId, o), this.activeSessionId = null, this.lastState = "IDLE";
+        return;
       }
     }
-    this.activeSessionId && e.state && await r.addSessionEvent(this.activeSessionId, e), this.lastState = t;
+    this.activeSessionId && e.state && await a.addSessionEvent(this.activeSessionId, e), this.lastState = t;
   }
   onStatus(e) {
     this.onStatusCallback = e;
@@ -339,7 +345,8 @@ class ee {
     console.log("Setting profile:", JSON.stringify(e, null, 2));
     const t = {
       command: "profile",
-      id: e.id,
+      id: String(e.id),
+      // Ensure ID is a string
       name: e.name,
       steps: e.steps.map((s) => ({
         type: s.type || s.mode || "IDLE",
@@ -361,53 +368,53 @@ class ee {
     t !== void 0 && (n.duration = t), s !== void 0 && (n.setPoint = s), this.sendCommand(n);
   }
 }
-const te = D(import.meta.url);
+const te = b(import.meta.url);
 R(te);
 console.log("Initializing Kiln Controller Service...");
 console.log(`Environment: ${f.isProduction ? "Production" : "Development"}`);
 console.log(`Serving Client from: ${f.clientPath}`);
-const c = new ee(f.serialPort, f.baudRate), o = g();
-let u = { state: "UNKNOWN", timestamp: 0 }, h = [], l = null;
-o.use(L());
-o.use(g.json());
-o.use(g.static(f.clientPath));
-o.get("/api/preferences", async (i, e) => {
-  const t = await r.getPreferences();
+const c = new ee(f.serialPort, f.baudRate), r = g();
+let h = { state: "UNKNOWN", timestamp: 0 }, u = [], l = null;
+r.use(x());
+r.use(g.json());
+r.use(g.static(f.clientPath));
+r.get("/api/preferences", async (i, e) => {
+  const t = await a.getPreferences();
   e.json(t);
 });
-o.post("/api/preferences", async (i, e) => {
-  const t = await r.updatePreferences(i.body);
+r.post("/api/preferences", async (i, e) => {
+  const t = await a.updatePreferences(i.body);
   e.json(t);
 });
-o.get("/api/profiles", async (i, e) => {
-  const t = await r.getProfiles();
+r.get("/api/profiles", async (i, e) => {
+  const t = await a.getProfiles();
   e.json(t || []);
 });
-o.post("/api/profiles", async (i, e) => {
-  const t = await r.addProfile(i.body);
+r.post("/api/profiles", async (i, e) => {
+  const t = await a.addProfile(i.body);
   e.json(t);
 });
-o.put("/api/profiles/:id", async (i, e) => {
-  const t = parseInt(i.params.id), s = await r.updateProfile(t, i.body);
+r.put("/api/profiles/:id", async (i, e) => {
+  const t = parseInt(i.params.id), s = await a.updateProfile(t, i.body);
   s ? e.json(s) : e.status(404).json({ error: "Profile not found" });
 });
-o.delete("/api/profiles/:id", async (i, e) => {
+r.delete("/api/profiles/:id", async (i, e) => {
   const t = parseInt(i.params.id);
-  await r.deleteProfile(t), e.json({ success: !0 });
+  await a.deleteProfile(t), e.json({ success: !0 });
 });
-o.get("/api/history", (i, e) => {
-  e.json(r.historyDb.data.sessions);
+r.get("/api/history", (i, e) => {
+  e.json(a.historyDb.data.sessions);
 });
-o.delete("/api/history", async (i, e) => {
-  await r.clearHistory(), e.json({ success: !0, message: "History cleared" });
+r.delete("/api/history", async (i, e) => {
+  await a.clearHistory(), e.json({ success: !0, message: "History cleared" });
 });
-o.get("/api/history/:id", (i, e) => {
-  const t = parseInt(i.params.id, 10), s = r.historyDb.data.sessions.find((n) => n.id === t);
+r.get("/api/history/:id", (i, e) => {
+  const t = parseInt(i.params.id, 10), s = a.historyDb.data.sessions.find((n) => n.id === t);
   s ? e.json(s) : e.status(404).json({ success: !1, message: "Session not found" });
 });
-o.get("/api/events", (i, e) => {
+r.get("/api/events", (i, e) => {
   e.setHeader("Content-Type", "text/event-stream"), e.setHeader("Cache-Control", "no-cache"), e.setHeader("Connection", "keep-alive"), e.flushHeaders();
-  const t = JSON.stringify(u);
+  const t = JSON.stringify(h);
   e.write(`data: ${t}
 
 `);
@@ -415,17 +422,17 @@ o.get("/api/events", (i, e) => {
     id: s,
     res: e
   };
-  h.push(n), i.on("close", () => {
-    h = h.filter((a) => a.id !== s);
+  u.push(n), i.on("close", () => {
+    u = u.filter((o) => o.id !== s);
   });
 });
-o.get("/api/status", (i, e) => {
-  e.json(u);
+r.get("/api/status", (i, e) => {
+  e.json(h);
 });
-o.post("/api/start", async (i, e) => {
+r.post("/api/start", async (i, e) => {
   const { profileId: t } = i.body;
   if (t) {
-    const n = (await r.getProfiles())?.find((a) => a.id === t);
+    const n = (await a.getProfiles())?.find((o) => o.id === t);
     if (n)
       console.log(`Loading profile ${n.name} before starting...`), c.setProfile(n);
     else
@@ -435,26 +442,26 @@ o.post("/api/start", async (i, e) => {
     c.start();
   }, 500);
   try {
-    l = (await r.createSession()).id, console.log(`Started new session: ${l}`);
+    l = (await a.createSession()).id, console.log(`Started new session: ${l}`);
   } catch (s) {
     console.error("Failed to create history session:", s);
   }
   e.json({ success: !0, message: "Start command sent" });
 });
-o.post("/api/stop", async (i, e) => {
-  c.stop(), l && (await r.endSession(l, "ABORTED"), console.log(`Ended session ${l}: ABORTED`), l = null), e.json({ success: !0, message: "Stop command sent" });
+r.post("/api/stop", async (i, e) => {
+  c.stop(), l && (await a.endSession(l, "ABORTED"), console.log(`Ended session ${l}: ABORTED`), l = null), e.json({ success: !0, message: "Stop command sent" });
 });
-o.post("/api/profile", (i, e) => {
-  const { targetTemperature: t, rampTime: s, soakDuration: n, coolTime: a } = i.body;
+r.post("/api/profile", (i, e) => {
+  const { targetTemperature: t, rampTime: s, soakDuration: n, coolTime: o } = i.body;
   if (t === void 0)
     return e.status(400).json({ success: !1, message: "targetTemperature is required" });
-  c.setProfile(t, s, n, a), e.json({
+  c.setProfile(t, s, n, o), e.json({
     success: !0,
     message: "Profile update sent",
-    params: { targetTemperature: t, rampTime: s, soakDuration: n, coolTime: a }
+    params: { targetTemperature: t, rampTime: s, soakDuration: n, coolTime: o }
   });
 });
-o.post("/api/test", (i, e) => {
+r.post("/api/test", (i, e) => {
   const { temperature: t, duration: s, setPoint: n } = i.body;
   if (t === void 0)
     return e.status(400).json({ success: !1, message: "temperature is required" });
@@ -464,7 +471,7 @@ o.post("/api/test", (i, e) => {
     params: { temperature: t, duration: s, setPoint: n }
   });
 });
-o.post("/api/test/temp", (i, e) => {
+r.post("/api/test/temp", (i, e) => {
   const { temperature: t } = i.body;
   if (t === void 0)
     return e.status(400).json({ success: !1, message: "temperature is required" });
@@ -475,31 +482,31 @@ o.post("/api/test/temp", (i, e) => {
   });
 });
 c.onStatus(async (i) => {
-  const e = u.state;
-  if (u = { ...i, timestamp: Date.now() }, h.forEach((n) => {
-    n.res.write(`data: ${JSON.stringify(u)}
+  const e = h.state;
+  if (h = { ...i, timestamp: Date.now() }, u.forEach((n) => {
+    n.res.write(`data: ${JSON.stringify(h)}
 
 `);
   }), l && (i.state === "RAMP" || i.state === "SOAK" || i.state === "COOL"))
     try {
-      await r.addSessionEvent(l, i);
+      await a.addSessionEvent(l, i);
     } catch (n) {
       console.error("Error saving session event:", n);
     }
   else if (l && (i.state === "COMPLETED" || i.state === "ABORTED" || i.state === "EMERGENCY_STOP"))
     try {
-      await r.addSessionEvent(l, i), await r.endSession(l, i.state), console.log(`Session ${l} completed via status update: ${i.state}`), l = null;
+      await a.addSessionEvent(l, i), await a.endSession(l, i.state), console.log(`Session ${l} completed via status update: ${i.state}`), l = null;
     } catch (n) {
       console.error("Error closing session:", n);
     }
-  ((await r.getPreferences()).logLevel || "verbose") === "quiet" ? (i.state && i.state !== e && console.log(`[STATE CHANGE] ${e} -> ${i.state}`), i.message && i.message.includes("Lost contact") && console.log(`[CONNECTION] ${i.message}`)) : i.state ? console.log("[STATUS]", JSON.stringify(i)) : i.message ? console.log(`[MSG] ${i.message}`) : console.log("[DATA]", i);
+  ((await a.getPreferences()).logLevel || "verbose") === "quiet" ? (i.state && i.state !== e && console.log(`[STATE CHANGE] ${e} -> ${i.state}`), i.message && i.message.includes("Lost contact") && console.log(`[CONNECTION] ${i.message}`)) : i.state ? console.log("[STATUS]", JSON.stringify(i)) : i.message ? console.log(`[MSG] ${i.message}`) : console.log("[DATA]", i);
 });
-o.get("*", (i, e) => {
+r.get("*", (i, e) => {
   e.sendFile(d.join(f.clientPath, "index.html"));
 });
 async function se() {
   try {
-    await c.connect(), o.listen(f.serverPort, () => {
+    await c.connect(), r.listen(f.serverPort, () => {
       console.log(`Web API running on http://localhost:${f.serverPort}`);
     }), console.log("Service is running and attempting to maintain Arduino connection.");
     const i = () => {

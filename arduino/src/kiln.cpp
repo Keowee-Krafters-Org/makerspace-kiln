@@ -6,13 +6,17 @@
 #include "kiln.h"
 
 // --- Hardware Pins ---
-#define DO   3
-#define CS   4
-#define CLK  5
+// For MAX31856, hardware SPI is used.
+// On Zero/M0: SCK = PA17, MOSI = PA16, MISO = PA19
+// Connect SCK to MAX31856 SCK
+// Connect MISO to MAX31856 SDO
+// Connect MOSI to MAX31856 SDI
+#define MAXCS   4
 #define LED_PIN 13 
 
 // --- Configuration ---
 #define PID_WINDOW_SIZE 10000
+#define MAX_SAFE_TEMPERATURE 1100.0 // Set a hard limit for safety
 
 // --- Globals ---
 KilnState currentState = IDLE;
@@ -25,7 +29,7 @@ double setpoint = 0, input = 0, output = 0;
 // Kp=250 means 40 degrees error gives 10000ms output (Full ON)
 double Kp=250, Ki=2, Kd=400;
 PID kilnPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
-Adafruit_MAX31855 thermocouple(CLK, CS, DO);
+Adafruit_MAX31856 thermocouple = Adafruit_MAX31856(MAXCS);
 
 #ifdef DRIVER_PWM
 #include <Adafruit_PWMServoDriver.h>
@@ -75,6 +79,18 @@ void setup() {
     Serial_.println();
 
     pinMode(LED_PIN, OUTPUT);
+    
+    // Initialize MAX31856
+    if (!thermocouple.begin()) {
+        JsonDocument errDoc;
+        errDoc["state"] = "ERROR";
+        errDoc["message"] = "MAX31856 not found!";
+        serializeJson(errDoc, Serial_);
+        Serial_.println();
+        while (1) delay(10); // Halt on critical error
+    }
+    thermocouple.setThermocoupleType(MAX31856_TCTYPE_S);
+
     setupIO();
     
     windowStartTime = millis();
@@ -90,13 +106,23 @@ void loop() {
         input = simulatedInput;
     } else {
         isSimulated = false;
-        input = thermocouple.readCelsius();
+        input = thermocouple.readThermocoupleTemperature();
     }
     
     if (isnan(input)) {
         nan_count++;
         if (nan_count > 10) {
-            currentState = EMERGENCY_STOP;
+            // Check for specific faults if available
+            uint8_t fault = thermocouple.readFault();
+            if (fault) {
+                JsonDocument doc;
+                doc["state"] = "ERROR";
+                doc["message"] = "Thermocouple fault";
+                doc["fault_code"] = fault;
+                serializeJson(doc, Serial_);
+                Serial_.println();
+            }
+            currentState = ERROR_STATE;
         }
     } else {
         nan_count = 0;
@@ -171,9 +197,12 @@ void runProfileLogic() {
     unsigned long elapsed = millis() - stepStartTime;
     bool stepComplete = false;
     double nextInitial = setpoint; 
+    
+    // Cap the target temperature for safety
+    double safeTarget = min(step.targetTemperature, MAX_SAFE_TEMPERATURE);
 
     if (step.type == SOAK) {
-        setpoint = step.targetTemperature;
+        setpoint = safeTarget;
         if (elapsed >= (unsigned long)step.duration * 60000) {
             stepComplete = true;
             nextInitial = setpoint;
@@ -197,7 +226,7 @@ void runProfileLogic() {
 
         if (isNaturalCool) {
             setpoint = 0;
-            if (input <= step.targetTemperature) {
+            if (input <= safeTarget) {
                 stepComplete = true;
                 nextInitial = input; // Start next step from actual temp (since setpoint was 0)
             }
@@ -207,16 +236,16 @@ void runProfileLogic() {
                 double durationHours = elapsed / 3600000.0;
                 double delta = effectiveRate * durationHours;
                 
-                if (step.targetTemperature >= step.initialSetpoint) {
+                if (safeTarget >= step.initialSetpoint) {
                     setpoint = step.initialSetpoint + delta;
-                    if (setpoint > step.targetTemperature) setpoint = step.targetTemperature;
+                    if (setpoint > safeTarget) setpoint = safeTarget;
                 } else {
                     setpoint = step.initialSetpoint - delta;
-                    if (setpoint < step.targetTemperature) setpoint = step.targetTemperature;
+                    if (setpoint < safeTarget) setpoint = safeTarget;
                 }
             } else {
                 // Instant Jump (RAMP with rate/dur 0) or Holding (if rate 0)
-                setpoint = step.targetTemperature;
+                setpoint = safeTarget;
             }
 
             // 4. Check for Completion (Wait for Reach + Duration)
@@ -228,14 +257,14 @@ void runProfileLogic() {
             bool targetReached = false;
             bool inputReached = false;
             
-            if (step.targetTemperature >= step.initialSetpoint) {
+            if (safeTarget >= step.initialSetpoint) {
                 // Direction: UP
-                if (setpoint >= step.targetTemperature) targetReached = true;
-                if (input >= step.targetTemperature) inputReached = true;
+                if (setpoint >= safeTarget) targetReached = true;
+                if (input >= safeTarget) inputReached = true;
             } else {
                 // Direction: DOWN
-                if (setpoint <= step.targetTemperature) targetReached = true;
-                if (input <= step.targetTemperature) inputReached = true;
+                if (setpoint <= safeTarget) targetReached = true;
+                if (input <= safeTarget) inputReached = true;
             }
             
             // Step is complete when Duration is met AND Target is reached (Setpoint & Input)
