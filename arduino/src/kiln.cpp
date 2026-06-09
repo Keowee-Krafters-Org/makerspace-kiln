@@ -18,6 +18,16 @@
 #define PID_WINDOW_SIZE 10000
 #define MAX_SAFE_TEMPERATURE 1100.0 // Set a hard limit for safety
 
+// MAX31856 fault register bits
+#define MAX31856_FAULT_CJRANGE 0x80
+#define MAX31856_FAULT_TCRANGE 0x40
+#define MAX31856_FAULT_CJHIGH  0x20
+#define MAX31856_FAULT_CJLOW   0x10
+#define MAX31856_FAULT_TCHIGH  0x08
+#define MAX31856_FAULT_TCLOW   0x04
+#define MAX31856_FAULT_OVUV    0x02
+#define MAX31856_FAULT_OPEN    0x01
+
 // --- Globals ---
 KilnState currentState = IDLE;
 Profile activeProfile;
@@ -65,6 +75,7 @@ const char* stateToString(KilnState s);
 void runProfileLogic();
 void forceStop();
 unsigned long calculateTotalDuration();
+void addMax31856FaultFlags(JsonDocument& doc, uint8_t fault);
 
 void setup() {
     Serial_.begin(9600); 
@@ -112,16 +123,26 @@ void loop() {
     if (isnan(input)) {
         nan_count++;
         if (nan_count > 10) {
-            // Check for specific faults if available
+            // Check for specific faults and separate wiring/SPI issues from probe faults.
             uint8_t fault = thermocouple.readFault();
-            if (fault) {
-                JsonDocument doc;
-                doc["state"] = "ERROR";
+            JsonDocument doc;
+            doc["state"] = "ERROR";
+            doc["fault_code"] = fault;
+
+            if (fault == 0xFF) {
+                doc["error_type"] = "COMMUNICATION";
+                doc["message"] = "MAX31856 communication error";
+            } else if (fault != 0) {
+                doc["error_type"] = "THERMOCOUPLE";
                 doc["message"] = "Thermocouple fault";
-                doc["fault_code"] = fault;
-                serializeJson(doc, Serial_);
-                Serial_.println();
+                addMax31856FaultFlags(doc, fault);
+            } else {
+                doc["error_type"] = "READ";
+                doc["message"] = "Temperature read failed";
             }
+
+            serializeJson(doc, Serial_);
+            Serial_.println();
             currentState = ERROR_STATE;
         }
     } else {
@@ -381,8 +402,20 @@ const char* stateToString(KilnState s) {
         case COMPLETED: return "COMPLETED";
         case ABORTED: return "ABORTED";
         case EMERGENCY_STOP: return "EMERGENCY_STOP";
+        case ERROR_STATE: return "ERROR";
         default: return "UNKNOWN";
     }
+}
+
+void addMax31856FaultFlags(JsonDocument& doc, uint8_t fault) {
+    doc["fault_open"] = (fault & MAX31856_FAULT_OPEN) != 0;
+    doc["fault_over_under_voltage"] = (fault & MAX31856_FAULT_OVUV) != 0;
+    doc["fault_tc_low"] = (fault & MAX31856_FAULT_TCLOW) != 0;
+    doc["fault_tc_high"] = (fault & MAX31856_FAULT_TCHIGH) != 0;
+    doc["fault_cj_low"] = (fault & MAX31856_FAULT_CJLOW) != 0;
+    doc["fault_cj_high"] = (fault & MAX31856_FAULT_CJHIGH) != 0;
+    doc["fault_tc_range"] = (fault & MAX31856_FAULT_TCRANGE) != 0;
+    doc["fault_cj_range"] = (fault & MAX31856_FAULT_CJRANGE) != 0;
 }
 
 unsigned long calculateTotalDuration() {
