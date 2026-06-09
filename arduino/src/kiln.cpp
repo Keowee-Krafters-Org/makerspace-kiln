@@ -6,13 +6,18 @@
 #include "kiln.h"
 
 // --- Hardware Pins ---
-// For MAX31856, hardware SPI is used.
-// On Zero/M0: SCK = PA17, MOSI = PA16, MISO = PA19
-// Connect SCK to MAX31856 SCK
-// Connect MISO to MAX31856 SDO
-// Connect MOSI to MAX31856 SDI
-#define MAXCS   4
+// For MAX31856, use the TinyZero SPI terminal block pins (PA16..PA19).
+// In the zeroUSB variant these map to digital pins 35/37/36/34:
+// MOSI=35(PA16), SCK=37(PA17), SS=36(PA18), MISO=34(PA19)
+#define MAX_MISO_PIN 34
+#define MAX_MOSI_PIN 35
+#define MAXCS        36
+#define MAX_SCK_PIN  37
 #define LED_PIN 13 
+
+// Temporary diagnostic mode: cycles SS and SCK through fixed states so a
+// meter can verify terminal-to-pin mapping. Set to 0 for normal operation.
+#define SPI_PIN_DIAGNOSTIC_MODE 0
 
 // --- Configuration ---
 #define PID_WINDOW_SIZE 10000
@@ -39,7 +44,7 @@ double setpoint = 0, input = 0, output = 0;
 // Kp=250 means 40 degrees error gives 10000ms output (Full ON)
 double Kp=250, Ki=2, Kd=400;
 PID kilnPID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
-Adafruit_MAX31856 thermocouple = Adafruit_MAX31856(MAXCS);
+Adafruit_MAX31856 thermocouple = Adafruit_MAX31856(MAXCS, MAX_MOSI_PIN, MAX_MISO_PIN, MAX_SCK_PIN);
 
 #ifdef DRIVER_PWM
 #include <Adafruit_PWMServoDriver.h>
@@ -64,6 +69,10 @@ bool ssrUpperOn = false;
 bool ssrLowerOn = false;
 
 int nan_count = 0;
+uint8_t lastFaultCode = 0;
+bool faultReported = false;
+const char* lastErrorType = "";
+const char* lastErrorMessage = "";
 
 // LED
 unsigned long ledLastChangeTime = 0;
@@ -76,6 +85,7 @@ void runProfileLogic();
 void forceStop();
 unsigned long calculateTotalDuration();
 void addMax31856FaultFlags(JsonDocument& doc, uint8_t fault);
+bool verifyMax31856Communication();
 
 void setup() {
     Serial_.begin(9600); 
@@ -90,7 +100,55 @@ void setup() {
     Serial_.println();
 
     pinMode(LED_PIN, OUTPUT);
+
+#if SPI_PIN_DIAGNOSTIC_MODE
+    pinMode(MAXCS, OUTPUT);
+    pinMode(MAX_SCK_PIN, OUTPUT);
+    pinMode(MAX_MOSI_PIN, OUTPUT); 
+    pinMode(MAX_MISO_PIN, OUTPUT);
+    while (1) {
+       
+        // Phase 1: All LOW
+
+        digitalWrite(MAXCS, LOW);
+        digitalWrite(MAX_MOSI_PIN, LOW);
+        digitalWrite(MAX_MISO_PIN, LOW);
+        digitalWrite(MAX_SCK_PIN, LOW);
+        Serial_.println("LOW, LOW LOW LOW");
+        delay(5000);
+        digitalWrite(MAXCS, HIGH);
+        digitalWrite(MAX_MOSI_PIN, LOW);
+        digitalWrite(MAX_MISO_PIN, LOW);
+        digitalWrite(MAX_SCK_PIN, LOW);
+        Serial_.println("HIGH, LOW LOW LOW");
+        delay(5000);
+        
+ // Phase 1: SS HIGH, SCK LOW
+        digitalWrite(MAXCS, LOW);
+        digitalWrite(MAX_MOSI_PIN, HIGH);
+        digitalWrite(MAX_MISO_PIN, LOW);
+        digitalWrite(MAX_SCK_PIN, LOW);
+        Serial_.println("LOW, HIGH, LOW, LOW");
+        delay(5000);
+
+        digitalWrite(MAXCS, LOW);
+        digitalWrite(MAX_MOSI_PIN, LOW);
+        digitalWrite(MAX_MISO_PIN, HIGH);
+        digitalWrite(MAX_SCK_PIN, LOW);
+        Serial_.println("LOW, LOW , HIGH, LOW");
+  
+        delay(5000);
+
+        digitalWrite(MAXCS, LOW);
+        digitalWrite(MAX_MOSI_PIN, LOW);
+        digitalWrite(MAX_MISO_PIN, LOW);
+        digitalWrite(MAX_SCK_PIN, HIGH);
+        Serial_.println("LOW, LOW , LOW, HIGH");
+        delay(5000);
     
+    }
+#endif
+
     // Initialize MAX31856
     if (!thermocouple.begin()) {
         JsonDocument errDoc;
@@ -101,6 +159,16 @@ void setup() {
         while (1) delay(10); // Halt on critical error
     }
     thermocouple.setThermocoupleType(MAX31856_TCTYPE_S);
+    if (!verifyMax31856Communication()) {
+        JsonDocument errDoc;
+        errDoc["state"] = "ERROR";
+        errDoc["fault_code"] = 255;
+        errDoc["error_type"] = "COMMUNICATION";
+        errDoc["message"] = "MAX31856 readback check failed";
+        errDoc["cs_pin"] = MAXCS;
+        serializeJson(errDoc, Serial_);
+        Serial_.println();
+    }
 
     setupIO();
     
@@ -120,33 +188,71 @@ void loop() {
         input = thermocouple.readThermocoupleTemperature();
     }
     
-    if (isnan(input)) {
+    uint8_t fault = 0;
+    if (!isSimulated) {
+        fault = thermocouple.readFault();
+    }
+
+    bool readFailed = isnan(input);
+    bool hasSensorFault = fault != 0;
+    bool shouldReportError = false;
+
+    if (readFailed) {
         nan_count++;
-        if (nan_count > 10) {
-            // Check for specific faults and separate wiring/SPI issues from probe faults.
-            uint8_t fault = thermocouple.readFault();
+        shouldReportError = (nan_count > 10);
+    } else {
+        nan_count = 0;
+    }
+
+    // MAX31856 can return a numeric temp while fault bits are set (e.g. open TC).
+    if (hasSensorFault) {
+        shouldReportError = true;
+    }
+
+    if (shouldReportError) {
+        // Safety-first: drop heat outputs immediately on any sensor fault.
+        forceStop();
+
+        if (!faultReported || fault != lastFaultCode) {
             JsonDocument doc;
             doc["state"] = "ERROR";
             doc["fault_code"] = fault;
 
             if (fault == 0xFF) {
+                lastErrorType = "COMMUNICATION";
+                lastErrorMessage = "MAX31856 communication error";
                 doc["error_type"] = "COMMUNICATION";
                 doc["message"] = "MAX31856 communication error";
             } else if (fault != 0) {
+                lastErrorType = "THERMOCOUPLE";
                 doc["error_type"] = "THERMOCOUPLE";
-                doc["message"] = "Thermocouple fault";
+                if ((fault & MAX31856_FAULT_OPEN) != 0) {
+                    lastErrorMessage = "Thermocouple open circuit";
+                    doc["message"] = "Thermocouple open circuit";
+                } else {
+                    lastErrorMessage = "Thermocouple fault";
+                    doc["message"] = "Thermocouple fault";
+                }
                 addMax31856FaultFlags(doc, fault);
             } else {
+                lastErrorType = "READ";
+                lastErrorMessage = "Temperature read failed";
                 doc["error_type"] = "READ";
                 doc["message"] = "Temperature read failed";
             }
 
             serializeJson(doc, Serial_);
             Serial_.println();
-            currentState = ERROR_STATE;
         }
+
+        faultReported = true;
+        lastFaultCode = fault;
+        currentState = ERROR_STATE;
     } else {
-        nan_count = 0;
+        faultReported = false;
+        lastFaultCode = 0;
+        lastErrorType = "";
+        lastErrorMessage = "";
     }
 
     // 2. Serial Commands
@@ -418,6 +524,22 @@ void addMax31856FaultFlags(JsonDocument& doc, uint8_t fault) {
     doc["fault_cj_range"] = (fault & MAX31856_FAULT_CJRANGE) != 0;
 }
 
+bool verifyMax31856Communication() {
+    // Read back the configured type. This catches many "all 1s" SPI failures.
+    max31856_thermocoupletype_t tcType = thermocouple.getThermocoupleType();
+    if (tcType != MAX31856_TCTYPE_S) {
+        return false;
+    }
+
+    // 0xFF typically means MISO pulled high / no valid slave response.
+    uint8_t fault = thermocouple.readFault();
+    if (fault == 0xFF) {
+        return false;
+    }
+
+    return true;
+}
+
 unsigned long calculateTotalDuration() {
     unsigned long total = 0;
     double currentTemp = isnan(input) ? 25.0 : input;
@@ -490,6 +612,15 @@ void reportStatus(bool force) {
         doc["ssrUpper"] = ssrUpperOn;
         doc["ssrLower"] = ssrLowerOn;
         doc["isSimulated"] = isSimulated;
+
+        if (currentState == ERROR_STATE && lastErrorType[0] != '\0') {
+            doc["fault_code"] = lastFaultCode;
+            doc["error_type"] = lastErrorType;
+            doc["message"] = lastErrorMessage;
+            if (strcmp(lastErrorType, "THERMOCOUPLE") == 0) {
+                addMax31856FaultFlags(doc, lastFaultCode);
+            }
+        }
         
         serializeJson(doc, Serial_);
         Serial_.println();
