@@ -65,7 +65,6 @@ class KilnInterface {
             this.port.on('open', () => {
                 this.isConnecting = false;
                 console.log(`Connected to kiln on ${this.portPath}`);
-                this.lastState = 'IDLE'; // Reset state on connect
                 if (this.reconnectInterval) {
                     clearInterval(this.reconnectInterval);
                     this.reconnectInterval = null;
@@ -114,26 +113,38 @@ class KilnInterface {
 
         // --- Session Management ---
         const currentState = data.state;
+
+        // End active session on terminal states, including firmware ERROR.
+        const isStopping = currentState === 'COMPLETED'
+            || currentState === 'ABORTED'
+            || currentState === 'EMERGENCY_STOP'
+            || currentState === 'ERROR'
+            || currentState === 'ERROR_STATE';
+
+        if (this.activeSessionId && isStopping) {
+            const finalStatus = currentState;
+            console.log(`[SESSION] Ending session: ${this.activeSessionId} with status: ${finalStatus}`);
+            await kilnDatabase.endSession(this.activeSessionId, finalStatus);
+            this.activeSessionId = null;
+            this.lastState = 'IDLE'; // Explicitly reset state after terminal condition
+            return; // Stop further processing for this event
+        }
+
         if (currentState && currentState !== this.lastState) {
             console.log(`[STATE CHANGE] ${this.lastState} -> ${currentState}`);
 
             // STARTING a new session
             const isStarting = this.lastState === 'IDLE' && (currentState === 'RAMP' || currentState === 'PREHEAT' || currentState === 'SOAK');
             if (!this.activeSessionId && isStarting) {
-                const newSession = await kilnDatabase.createSession(data.profileId);
-                this.activeSessionId = newSession.id;
-                console.log(`[SESSION] Started new session: ${this.activeSessionId} for profile ${data.profileId}`);
-            }
-
-            // ENDING a session
-            const isStopping = currentState === 'COMPLETED' || currentState === 'ABORTED' || currentState === 'EMERGENCY_STOP';
-            if (this.activeSessionId && isStopping) {
-                const finalStatus = currentState;
-                console.log(`[SESSION] Ending session: ${this.activeSessionId} with status: ${finalStatus}`);
-                await kilnDatabase.endSession(this.activeSessionId, finalStatus);
-                this.activeSessionId = null;
-                this.lastState = "IDLE"; // Explicitly reset state after stop
-                return; // Stop further processing for this event
+                const existingSession = kilnDatabase.findRunningSession(data.profileId);
+                if (existingSession) {
+                    this.activeSessionId = existingSession.id;
+                    console.log(`[SESSION] Resumed session: ${this.activeSessionId} for profile ${data.profileId}`);
+                } else {
+                    const newSession = await kilnDatabase.createSession(data.profileId);
+                    this.activeSessionId = newSession.id;
+                    console.log(`[SESSION] Started new session: ${this.activeSessionId} for profile ${data.profileId}`);
+                }
             }
         }
 
