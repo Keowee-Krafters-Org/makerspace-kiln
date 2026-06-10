@@ -49,6 +49,8 @@ unsigned long trackingDeviationStartTime = 0;
 double lastTrackingDeviation = 0.0;
 unsigned long responseLagStartTime = 0;
 double responseLagStartTemp = 0.0;
+unsigned long saturationLagStartTime = 0;
+double saturationLagStartTemp = 0.0;
 const char* trackingFaultReason = "";
 
 // LED
@@ -550,12 +552,15 @@ bool checkTrackingWindowFault(unsigned long now) {
         lastTrackingDeviation = 0.0;
         responseLagStartTime = 0;
         responseLagStartTemp = input;
+        saturationLagStartTime = 0;
+        saturationLagStartTemp = input;
         trackingFaultReason = "";
         return false;
     }
 
     bool trackingWindowFault = false;
     bool responseLagFault = false;
+    bool responseLagSaturatedFault = false;
 
     // 1) SOAK deviation window (existing behavior)
     if (currentState == SOAK && setpoint >= TRACKING_WINDOW_MIN_SETPOINT_C) {
@@ -600,6 +605,36 @@ bool checkTrackingWindowFault(unsigned long now) {
                 responseLagStartTemp = input;
             }
         }
+    }
+
+    // 3) Fast saturated-output lag trip
+    bool saturatedHeatDemand =
+        setpoint >= RESPONSE_LAG_MIN_SETPOINT_C &&
+        demand >= RESPONSE_LAG_DEMAND_C &&
+        output >= RESPONSE_LAG_SATURATION_OUTPUT_MIN;
+
+    if (!saturatedHeatDemand) {
+        saturationLagStartTime = 0;
+        saturationLagStartTemp = input;
+    } else {
+        if (saturationLagStartTime == 0) {
+            saturationLagStartTime = now;
+            saturationLagStartTemp = input;
+        } else if ((now - saturationLagStartTime) >= RESPONSE_LAG_SATURATION_WINDOW_MS) {
+            double saturatedRise = input - saturationLagStartTemp;
+            if (saturatedRise < RESPONSE_LAG_SATURATION_MIN_RISE_C) {
+                responseLagSaturatedFault = true;
+                lastTrackingDeviation = demand;
+            } else {
+                saturationLagStartTime = now;
+                saturationLagStartTemp = input;
+            }
+        }
+    }
+
+    if (responseLagSaturatedFault) {
+        trackingFaultReason = "RESPONSE_LAG_SATURATED";
+        return true;
     }
 
     if (responseLagFault) {
