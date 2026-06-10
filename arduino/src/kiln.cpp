@@ -5,34 +5,6 @@
 #include "driver.h"
 #include "kiln.h"
 
-// --- Hardware Pins ---
-// For MAX31856, use the TinyZero SPI terminal block pins (PA16..PA19).
-// In the zeroUSB variant these map to digital pins 35/37/36/34:
-// MOSI=35(PA16), SCK=37(PA17), SS=36(PA18), MISO=34(PA19)
-#define MAX_MISO_PIN 34
-#define MAX_MOSI_PIN 35
-#define MAXCS        36
-#define MAX_SCK_PIN  37
-#define LED_PIN 13 
-
-// Temporary diagnostic mode: cycles SS and SCK through fixed states so a
-// meter can verify terminal-to-pin mapping. Set to 0 for normal operation.
-#define SPI_PIN_DIAGNOSTIC_MODE 0
-
-// --- Configuration ---
-#define PID_WINDOW_SIZE 10000
-#define MAX_SAFE_TEMPERATURE 1100.0 // Set a hard limit for safety
-
-// MAX31856 fault register bits
-#define MAX31856_FAULT_CJRANGE 0x80
-#define MAX31856_FAULT_TCRANGE 0x40
-#define MAX31856_FAULT_CJHIGH  0x20
-#define MAX31856_FAULT_CJLOW   0x10
-#define MAX31856_FAULT_TCHIGH  0x08
-#define MAX31856_FAULT_TCLOW   0x04
-#define MAX31856_FAULT_OVUV    0x02
-#define MAX31856_FAULT_OPEN    0x01
-
 // --- Globals ---
 KilnState currentState = IDLE;
 Profile activeProfile;
@@ -73,6 +45,11 @@ uint8_t lastFaultCode = 0;
 bool faultReported = false;
 const char* lastErrorType = "";
 const char* lastErrorMessage = "";
+unsigned long trackingDeviationStartTime = 0;
+double lastTrackingDeviation = 0.0;
+unsigned long responseLagStartTime = 0;
+double responseLagStartTemp = 0.0;
+const char* trackingFaultReason = "";
 
 // LED
 unsigned long ledLastChangeTime = 0;
@@ -86,6 +63,7 @@ void forceStop();
 unsigned long calculateTotalDuration();
 void addMax31856FaultFlags(JsonDocument& doc, uint8_t fault);
 bool verifyMax31856Communication();
+bool checkTrackingWindowFault(unsigned long now);
 
 void setup() {
     Serial_.begin(9600); 
@@ -289,6 +267,32 @@ void loop() {
         setSSRState(SSR_LOWER, heatOn);
         ssrUpperOn = heatOn;
         ssrLowerOn = heatOn;
+
+        // Tracking window safety check (after PID so output demand is current).
+        if (checkTrackingWindowFault(now)) {
+            forceStop();
+            lastErrorType = "TRACKING";
+            if (strcmp(trackingFaultReason, "RESPONSE_LAG") == 0) {
+                lastErrorMessage = "Temperature response lag exceeded";
+            } else {
+                lastErrorMessage = "Tracking window exceeded";
+            }
+            lastFaultCode = 0;
+            currentState = ERROR_STATE;
+
+            JsonDocument doc;
+            doc["state"] = "ERROR";
+            doc["error_type"] = "TRACKING";
+            doc["tracking_reason"] = trackingFaultReason;
+            doc["message"] = lastErrorMessage;
+            doc["deviation"] = lastTrackingDeviation;
+            doc["allowed_deviation"] = TRACKING_WINDOW_DEVIATION_C;
+            doc["hold_ms"] = TRACKING_WINDOW_HOLD_MS;
+            doc["lag_window_ms"] = RESPONSE_LAG_WINDOW_MS;
+            doc["lag_min_rise"] = RESPONSE_LAG_MIN_RISE_C;
+            serializeJson(doc, Serial_);
+            Serial_.println();
+        }
     } else {
         forceStop();
     }
@@ -538,6 +542,78 @@ bool verifyMax31856Communication() {
     }
 
     return true;
+}
+
+bool checkTrackingWindowFault(unsigned long now) {
+    if (isnan(input) || !(currentState == RAMP || currentState == SOAK)) {
+        trackingDeviationStartTime = 0;
+        lastTrackingDeviation = 0.0;
+        responseLagStartTime = 0;
+        responseLagStartTemp = input;
+        trackingFaultReason = "";
+        return false;
+    }
+
+    bool trackingWindowFault = false;
+    bool responseLagFault = false;
+
+    // 1) SOAK deviation window (existing behavior)
+    if (currentState == SOAK && setpoint >= TRACKING_WINDOW_MIN_SETPOINT_C) {
+        double deviation = abs(input - setpoint);
+        lastTrackingDeviation = deviation;
+
+        if (deviation <= TRACKING_WINDOW_DEVIATION_C) {
+            trackingDeviationStartTime = 0;
+        } else {
+            if (trackingDeviationStartTime == 0) {
+                trackingDeviationStartTime = now;
+            } else if ((now - trackingDeviationStartTime) >= TRACKING_WINDOW_HOLD_MS) {
+                trackingWindowFault = true;
+            }
+        }
+    } else {
+        trackingDeviationStartTime = 0;
+    }
+
+    // 2) RAMP/SOAK response lag (new behavior)
+    double demand = setpoint - input;
+    bool sustainedHeatDemand =
+        setpoint >= RESPONSE_LAG_MIN_SETPOINT_C &&
+        demand >= RESPONSE_LAG_DEMAND_C &&
+        output >= RESPONSE_LAG_HEATER_OUTPUT_MIN;
+
+    if (!sustainedHeatDemand) {
+        responseLagStartTime = 0;
+        responseLagStartTemp = input;
+    } else {
+        if (responseLagStartTime == 0) {
+            responseLagStartTime = now;
+            responseLagStartTemp = input;
+        } else if ((now - responseLagStartTime) >= RESPONSE_LAG_WINDOW_MS) {
+            double rise = input - responseLagStartTemp;
+            if (rise < RESPONSE_LAG_MIN_RISE_C) {
+                responseLagFault = true;
+                lastTrackingDeviation = demand;
+            } else {
+                // Temperature is rising; start a fresh observation window.
+                responseLagStartTime = now;
+                responseLagStartTemp = input;
+            }
+        }
+    }
+
+    if (responseLagFault) {
+        trackingFaultReason = "RESPONSE_LAG";
+        return true;
+    }
+
+    if (trackingWindowFault) {
+        trackingFaultReason = "DEVIATION_WINDOW";
+        return true;
+    }
+
+    trackingFaultReason = "";
+    return false;
 }
 
 unsigned long calculateTotalDuration() {
