@@ -62,6 +62,20 @@ class KilnDatabase {
     return newSession;
   }
 
+  /**
+   * Returns the most recent RUNNING session, optionally filtered by profileId.
+   * @param {string|number|undefined} profileId Optional profile ID.
+   * @returns {object|null} Matching active session or null.
+   */
+  findRunningSession(profileId) {
+    const sessions = this.historyDb.data.sessions || [];
+    return sessions.find(session => {
+      if (session.status !== 'RUNNING') return false;
+      if (profileId === undefined || profileId === null) return true;
+      return String(session.profileId) === String(profileId);
+    }) || null;
+  }
+
   // --- Profile Management (in configDb) ---
   async getProfiles() {
     return this.configDb.data.profiles || [];

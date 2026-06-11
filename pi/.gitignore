@@ -5,3 +5,4 @@ db.json
 **/*/*.gz
 dist/
 history.json
+log/

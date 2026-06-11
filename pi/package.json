@@ -1,6 +1,6 @@
 {
   "name": "kiln-pi-monorepo",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Root orchestration for Kiln Pi Appliance",
   "workspaces": [
     "service",
