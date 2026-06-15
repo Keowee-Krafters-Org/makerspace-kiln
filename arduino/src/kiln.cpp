@@ -66,6 +66,7 @@ unsigned long calculateTotalDuration();
 void addMax31856FaultFlags(JsonDocument& doc, uint8_t fault);
 bool verifyMax31856Communication();
 bool checkTrackingWindowFault(unsigned long now);
+const char* thermocoupleTypeToLabel(max31856_thermocoupletype_t type);
 
 void setup() {
     Serial_.begin(9600); 
@@ -76,6 +77,7 @@ void setup() {
     doc["state"] = "IDLE";
     doc["message"] = "Kiln Controller 2.0 Starting";
     doc["version"] = VERSION;
+    doc["thermocouple_type"] = thermocoupleTypeToLabel(CONFIGURED_TC_TYPE);
     serializeJson(doc, Serial_);
     Serial_.println();
 
@@ -138,7 +140,7 @@ void setup() {
         Serial_.println();
         while (1) delay(10); // Halt on critical error
     }
-    thermocouple.setThermocoupleType(MAX31856_TCTYPE_S);
+    thermocouple.setThermocoupleType(CONFIGURED_TC_TYPE);
     if (!verifyMax31856Communication()) {
         JsonDocument errDoc;
         errDoc["state"] = "ERROR";
@@ -519,6 +521,20 @@ const char* stateToString(KilnState s) {
     }
 }
 
+const char* thermocoupleTypeToLabel(max31856_thermocoupletype_t type) {
+    switch (type) {
+        case MAX31856_TCTYPE_B: return "B";
+        case MAX31856_TCTYPE_E: return "E";
+        case MAX31856_TCTYPE_J: return "J";
+        case MAX31856_TCTYPE_K: return "K";
+        case MAX31856_TCTYPE_N: return "N";
+        case MAX31856_TCTYPE_R: return "R";
+        case MAX31856_TCTYPE_S: return "S";
+        case MAX31856_TCTYPE_T: return "T";
+        default: return "UNKNOWN";
+    }
+}
+
 void addMax31856FaultFlags(JsonDocument& doc, uint8_t fault) {
     doc["fault_open"] = (fault & MAX31856_FAULT_OPEN) != 0;
     doc["fault_over_under_voltage"] = (fault & MAX31856_FAULT_OVUV) != 0;
@@ -533,7 +549,7 @@ void addMax31856FaultFlags(JsonDocument& doc, uint8_t fault) {
 bool verifyMax31856Communication() {
     // Read back the configured type. This catches many "all 1s" SPI failures.
     max31856_thermocoupletype_t tcType = thermocouple.getThermocoupleType();
-    if (tcType != MAX31856_TCTYPE_S) {
+    if (tcType != CONFIGURED_TC_TYPE) {
         return false;
     }
 
@@ -562,6 +578,14 @@ bool checkTrackingWindowFault(unsigned long now) {
     bool responseLagFault = false;
     bool responseLagSaturatedFault = false;
 
+#if RESPONSE_LAG_DETECTION_ENABLED
+    bool isHighTempBand = input >= RESPONSE_LAG_HIGH_TEMP_C;
+    unsigned long responseLagWindowMs = isHighTempBand ? RESPONSE_LAG_WINDOW_MS_HOT : RESPONSE_LAG_WINDOW_MS;
+    double responseLagMinRiseC = isHighTempBand ? RESPONSE_LAG_MIN_RISE_C_HOT : RESPONSE_LAG_MIN_RISE_C;
+    unsigned long saturationLagWindowMs = isHighTempBand ? RESPONSE_LAG_SATURATION_WINDOW_MS_HOT : RESPONSE_LAG_SATURATION_WINDOW_MS;
+    double saturationMinRiseC = isHighTempBand ? RESPONSE_LAG_SATURATION_MIN_RISE_C_HOT : RESPONSE_LAG_SATURATION_MIN_RISE_C;
+#endif
+
     // 1) SOAK deviation window (existing behavior)
     if (currentState == SOAK && setpoint >= TRACKING_WINDOW_MIN_SETPOINT_C) {
         double deviation = abs(input - setpoint);
@@ -580,7 +604,8 @@ bool checkTrackingWindowFault(unsigned long now) {
         trackingDeviationStartTime = 0;
     }
 
-    // 2) RAMP/SOAK response lag (new behavior)
+    // 2) RAMP/SOAK response lag
+#if RESPONSE_LAG_DETECTION_ENABLED
     double demand = setpoint - input;
     bool sustainedHeatDemand =
         setpoint >= RESPONSE_LAG_MIN_SETPOINT_C &&
@@ -594,9 +619,9 @@ bool checkTrackingWindowFault(unsigned long now) {
         if (responseLagStartTime == 0) {
             responseLagStartTime = now;
             responseLagStartTemp = input;
-        } else if ((now - responseLagStartTime) >= RESPONSE_LAG_WINDOW_MS) {
+        } else if ((now - responseLagStartTime) >= responseLagWindowMs) {
             double rise = input - responseLagStartTemp;
-            if (rise < RESPONSE_LAG_MIN_RISE_C) {
+            if (rise < responseLagMinRiseC) {
                 responseLagFault = true;
                 lastTrackingDeviation = demand;
             } else {
@@ -620,9 +645,9 @@ bool checkTrackingWindowFault(unsigned long now) {
         if (saturationLagStartTime == 0) {
             saturationLagStartTime = now;
             saturationLagStartTemp = input;
-        } else if ((now - saturationLagStartTime) >= RESPONSE_LAG_SATURATION_WINDOW_MS) {
+        } else if ((now - saturationLagStartTime) >= saturationLagWindowMs) {
             double saturatedRise = input - saturationLagStartTemp;
-            if (saturatedRise < RESPONSE_LAG_SATURATION_MIN_RISE_C) {
+            if (saturatedRise < saturationMinRiseC) {
                 responseLagSaturatedFault = true;
                 lastTrackingDeviation = demand;
             } else {
@@ -631,6 +656,12 @@ bool checkTrackingWindowFault(unsigned long now) {
             }
         }
     }
+#else
+    responseLagStartTime = 0;
+    responseLagStartTemp = input;
+    saturationLagStartTime = 0;
+    saturationLagStartTemp = input;
+#endif
 
     if (responseLagSaturatedFault) {
         trackingFaultReason = "RESPONSE_LAG_SATURATED";
