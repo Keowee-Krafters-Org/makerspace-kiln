@@ -315,6 +315,9 @@ void advanceToNextStep(double nextInitialSetpoint) {
     currentStepIndex++;
     stepStartTime = millis();
     if (currentStepIndex < activeProfile.stepCount) {
+        // Keep status/PID coherent during the transition tick by carrying the
+        // next step's initial setpoint immediately.
+        setpoint = nextInitialSetpoint;
         activeProfile.steps[currentStepIndex].initialSetpoint = nextInitialSetpoint;
         currentState = activeProfile.steps[currentStepIndex].type;
     }

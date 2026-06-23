@@ -6,14 +6,14 @@
         {
           "id": 1776981319114,
           "type": "RAMP",
-          "targetTemperature": 1000,
+          "targetTemperature": 1060,
           "duration": 10,
           "rate": 0
         },
         {
           "id": 1776981325851,
           "type": "SOAK",
-          "targetTemperature": 1000,
+          "targetTemperature": 1060,
           "duration": 10,
           "rate": 0
         },
@@ -62,11 +62,141 @@
           "rate": 0
         }
       ]
+    },
+    {
+      "name": "Continue Bisque Glaze",
+      "steps": [
+        {
+          "id": 1778107028825,
+          "type": "RAMP",
+          "targetTemperature": 900,
+          "duration": 15,
+          "rate": ""
+        },
+        {
+          "id": 1778107061240,
+          "type": "RAMP",
+          "targetTemperature": 1060,
+          "duration": "",
+          "rate": 100
+        },
+        {
+          "id": 1778107085333,
+          "type": "SOAK",
+          "targetTemperature": 1060,
+          "duration": 30,
+          "rate": 0
+        },
+        {
+          "id": 1778107092272,
+          "type": "COOL",
+          "targetTemperature": 50,
+          "duration": 0,
+          "rate": 0
+        }
+      ],
+      "id": 1778107104601
+    },
+    {
+      "name": "Bisque Food Safe - Cone 6",
+      "steps": [
+        {
+          "id": 1781628109371,
+          "type": "RAMP",
+          "targetTemperature": 120,
+          "duration": "",
+          "rate": 60
+        },
+        {
+          "id": 1781628545929,
+          "type": "RAMP",
+          "targetTemperature": 1150,
+          "duration": "",
+          "rate": 200
+        },
+        {
+          "id": 1781628578201,
+          "type": "RAMP",
+          "targetTemperature": 1220,
+          "duration": "",
+          "rate": 60
+        },
+        {
+          "id": 1781628601635,
+          "type": "COOL",
+          "targetTemperature": 1150,
+          "duration": "",
+          "rate": 0
+        },
+        {
+          "id": 1781628663476,
+          "type": "COOL",
+          "targetTemperature": 760,
+          "duration": "",
+          "rate": 85
+        },
+        {
+          "id": 1781628737654,
+          "type": "COOL",
+          "targetTemperature": 50,
+          "duration": 10,
+          "rate": 0
+        }
+      ],
+      "id": 1781629086554
+    },
+    {
+      "id": 1781629100000,
+      "name": "Bisque - Cone 05",
+      "steps": [
+        {
+          "id": 1781629100001,
+          "type": "RAMP",
+          "targetTemperature": 120,
+          "duration": "",
+          "rate": 60
+        },
+        {
+          "id": 1781629100002,
+          "type": "RAMP",
+          "targetTemperature": 550,
+          "duration": "",
+          "rate": 100
+        },
+        {
+          "id": 1781629100003,
+          "type": "RAMP",
+          "targetTemperature": 600,
+          "duration": "",
+          "rate": 40
+        },
+        {
+          "id": 1781629100004,
+          "type": "RAMP",
+          "targetTemperature": 1046,
+          "duration": "",
+          "rate": 120
+        },
+        {
+          "id": 1781629100005,
+          "type": "SOAK",
+          "targetTemperature": 1046,
+          "duration": 10,
+          "rate": 0
+        },
+        {
+          "id": 1781629100006,
+          "type": "COOL",
+          "targetTemperature": 50,
+          "duration": "",
+          "rate": 0
+        }
+      ]
     }
   ],
   "preferences": {
     "temperatureUnits": "C",
     "defaultProfile": 1,
-    "logLevel": "verbose"
+    "logLevel": "quiet"
   }
 }
