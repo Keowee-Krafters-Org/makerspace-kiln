@@ -1,6 +1,5 @@
 #ifndef KILN_H
 #define KILN_H
-#define VERSION "0.3.0"
 #include <Arduino.h>
 #include <PID_v1.h>
 #include <Adafruit_MAX31856.h>
@@ -39,7 +38,7 @@
 #define MAX31856_FAULT_OPEN    0x01
 
 // Thermocouple configuration (single source of truth)
-#define CONFIGURED_TC_TYPE MAX31856_TCTYPE_K
+#define CONFIGURED_TC_TYPE MAX31856_TCTYPE_S
 
 // Tracking window safety: terminate if SOAK temp stays outside allowed band.
 // Tune these to ignore normal oscillation while catching external heat loss.
