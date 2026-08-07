@@ -58,6 +58,12 @@
 #define RESPONSE_LAG_SATURATION_WINDOW_MS 90000UL
 #define RESPONSE_LAG_SATURATION_MIN_RISE_C 2.0
 
+// SSR thermal protection: prevent junction temp overload on LC1219Z SSRs
+// Cap max duty cycle at 85% to give thermal headroom; LC1219Z derates sharply above 80°C ambient
+#define SSR_MAX_DUTY_CYCLE 8500.0
+#define SSR_THERMAL_FAULT_WINDOW_MS 120000UL
+#define SSR_THERMAL_FAULT_MIN_RISE_C 1.0
+
 enum KilnState { IDLE, PREHEAT, RAMP, SOAK, COOL, COMPLETED, ABORTED, EMERGENCY_STOP, ERROR_STATE };
 
 struct ProfileStep {
@@ -78,6 +84,7 @@ struct Profile {
 void updateLedIndicator();
 void reportStatus(bool forceReport = false);
 void handleCommand(JsonDocument& doc);
+bool checkSSRThermalFault(unsigned long now);
 #if defined(ARDUINO_ARCH_SAMD)
 #define Serial_ SerialUSB
 #else

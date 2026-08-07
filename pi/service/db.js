@@ -2,6 +2,7 @@ import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import config from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -10,6 +11,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.NODE_ENV === 'production'
   ? '/var/lib/kiln-controller'
   : __dirname;
+
+const historyArchiveDir = process.env.NODE_ENV === 'production'
+  ? dataDir
+  : join(__dirname, '../log');
 
 const historyFile = join(dataDir, 'history.json');
 const configFile = join(dataDir, 'config.json');
@@ -22,15 +27,35 @@ const configAdapter = new JSONFile(configFile);
 const defaultHistoryData = { sessions: [] };
 const defaultConfigData = { profiles: [], preferences: {} };
 
+const HISTORY_FILE_PATTERN = /^history(?:-[A-Za-z0-9._:-]+)?\.json$/;
+
+const getSnapshotTimestamp = () => {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  return [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate())
+  ].join('-') + '-' + [
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+    pad(now.getSeconds())
+  ].join('-');
+};
+
 
 class KilnDatabase {
   constructor(historyAdapter, configAdapter, defaultHistory, defaultConfig) {
     this.historyDb = new Low(historyAdapter, defaultHistory);
     this.configDb = new Low(configAdapter, defaultConfig);
     this.lastWrite = null;
+    this.historyFile = historyFile;
+    this.historyArchiveDir = historyArchiveDir;
+    this.activeHistoryFileName = 'history.json';
   }
 
   async init() {
+    await mkdir(this.historyArchiveDir, { recursive: true });
     await this.historyDb.read();
     await this.configDb.read();
     
@@ -43,6 +68,102 @@ class KilnDatabase {
     
     return this;
   }
+
+      resolveHistoryFile(fileName) {
+        if (!fileName || fileName === this.activeHistoryFileName) {
+          return this.historyFile;
+        }
+
+        if (!HISTORY_FILE_PATTERN.test(fileName)) {
+          throw new Error('Invalid history file name');
+        }
+
+        return join(this.historyArchiveDir, fileName);
+      }
+
+      async readHistoryFile(fileName) {
+        const targetFile = this.resolveHistoryFile(fileName);
+        const rawData = await readFile(targetFile, 'utf-8');
+        const parsed = JSON.parse(rawData);
+
+        if (!parsed || !Array.isArray(parsed.sessions)) {
+          throw new Error('Invalid history file format');
+        }
+
+        return parsed;
+      }
+
+      async getHistorySessions(fileName) {
+        if (!fileName || fileName === this.activeHistoryFileName) {
+          return this.historyDb.data.sessions || [];
+        }
+
+        const parsed = await this.readHistoryFile(fileName);
+        return parsed.sessions;
+      }
+
+      async getHistorySessionById(sessionId, fileName) {
+        const sessions = await this.getHistorySessions(fileName);
+        return sessions.find(session => session.id === sessionId) || null;
+      }
+
+      async listHistoryFiles() {
+        await mkdir(this.historyArchiveDir, { recursive: true });
+
+        const files = new Map();
+        const activeStats = await stat(this.historyFile);
+
+        files.set(this.activeHistoryFileName, {
+          name: this.activeHistoryFileName,
+          isActive: true,
+          updatedAt: activeStats.mtime.toISOString(),
+          size: activeStats.size
+        });
+
+        const archiveEntries = await readdir(this.historyArchiveDir, { withFileTypes: true });
+        for (const entry of archiveEntries) {
+          if (!entry.isFile() || !HISTORY_FILE_PATTERN.test(entry.name)) {
+            continue;
+          }
+
+          const archivePath = join(this.historyArchiveDir, entry.name);
+          const archiveStats = await stat(archivePath);
+          files.set(entry.name, {
+            name: entry.name,
+            isActive: entry.name === this.activeHistoryFileName,
+            updatedAt: archiveStats.mtime.toISOString(),
+            size: archiveStats.size
+          });
+        }
+
+        return Array.from(files.values()).sort((left, right) => {
+          if (left.isActive !== right.isActive) {
+            return left.isActive ? -1 : 1;
+          }
+
+          return right.updatedAt.localeCompare(left.updatedAt);
+        });
+      }
+
+      async storeHistorySnapshot(fileName) {
+        await mkdir(this.historyArchiveDir, { recursive: true });
+
+        const snapshotName = fileName || `history-${getSnapshotTimestamp()}.json`;
+        if (snapshotName === this.activeHistoryFileName || !HISTORY_FILE_PATTERN.test(snapshotName)) {
+          throw new Error('Invalid history file name');
+        }
+
+        const targetFile = join(this.historyArchiveDir, snapshotName);
+        await writeFile(targetFile, JSON.stringify(this.historyDb.data, null, 2), 'utf-8');
+
+        const snapshotStats = await stat(targetFile);
+        return {
+          name: snapshotName,
+          isActive: false,
+          updatedAt: snapshotStats.mtime.toISOString(),
+          size: snapshotStats.size
+        };
+      }
 
   /**
    * Creates a new session in the history database.

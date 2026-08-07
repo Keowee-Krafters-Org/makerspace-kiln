@@ -1,18 +1,77 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import axios from 'axios'
 
 const sessions = ref([])
 const loading = ref(false)
 const error = ref(null)
 const expandedSessionId = ref(null)
+const remoteMode = ref(false)
+const historyFiles = ref([])
+const activeFile = ref('history.json')
+const selectedFile = ref('history.json')
+const snapshotSaving = ref(false)
+
+const isArchiveSelection = computed(() => remoteMode.value && selectedFile.value !== activeFile.value)
+const canClearHistory = computed(() => !loading.value && sessions.value.length > 0 && !isArchiveSelection.value)
+const canStoreSnapshot = computed(() => remoteMode.value && !loading.value && !snapshotSaving.value && sessions.value.length > 0)
+
+const getHistoryHashFile = () => {
+  const hash = window.location.hash.slice(1) || '/'
+  const [path, queryString] = hash.split('?')
+  if (path !== '/history' || !queryString) {
+    return null
+  }
+
+  return new URLSearchParams(queryString).get('file')
+}
+
+const syncHistoryHash = () => {
+  const fileParam = remoteMode.value && selectedFile.value !== activeFile.value
+    ? `?file=${encodeURIComponent(selectedFile.value)}`
+    : ''
+
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#/history${fileParam}`)
+}
+
+const buildHistoryParams = () => {
+  if (!remoteMode.value || !selectedFile.value || selectedFile.value === activeFile.value) {
+    return {}
+  }
+
+  return { file: selectedFile.value }
+}
+
+const fetchHistoryFiles = async () => {
+  const requestedFile = getHistoryHashFile()
+
+  try {
+    const response = await axios.get('/api/history/files')
+    remoteMode.value = Boolean(response.data?.remoteMode)
+    activeFile.value = response.data?.activeFile || 'history.json'
+    historyFiles.value = response.data?.files || []
+
+    const requestedFileExists = requestedFile && historyFiles.value.some(file => file.name === requestedFile)
+    if (requestedFileExists) {
+      selectedFile.value = requestedFile
+    } else if (!historyFiles.value.some(file => file.name === selectedFile.value)) {
+      selectedFile.value = activeFile.value
+    }
+  } catch (err) {
+    console.error('Error fetching history file options:', err)
+    remoteMode.value = false
+    historyFiles.value = []
+    selectedFile.value = activeFile.value
+  }
+}
 
 const fetchHistory = async () => {
   loading.value = true
   error.value = null
   try {
-    const response = await axios.get('/api/history')
+    const response = await axios.get('/api/history', { params: buildHistoryParams() })
     sessions.value = response.data
+    syncHistoryHash()
   } catch (err) {
     console.error('Error fetching history:', err)
     error.value = 'Could not load history. Is the service running?'
@@ -22,6 +81,10 @@ const fetchHistory = async () => {
 }
 
 const clearHistory = async () => {
+  if (isArchiveSelection.value) {
+    return
+  }
+
   if (!confirm('Are you sure you want to delete all run history? This cannot be undone.')) {
     return
   }
@@ -31,6 +94,23 @@ const clearHistory = async () => {
   } catch (err) {
     console.error('Error clearing history:', err)
     error.value = 'Could not clear history.'
+  }
+}
+
+const storeSnapshot = async () => {
+  snapshotSaving.value = true
+  error.value = null
+
+  try {
+    const response = await axios.post('/api/history/files')
+    await fetchHistoryFiles()
+    selectedFile.value = response.data?.file?.name || selectedFile.value
+    await fetchHistory()
+  } catch (err) {
+    console.error('Error storing history snapshot:', err)
+    error.value = 'Could not store history snapshot.'
+  } finally {
+    snapshotSaving.value = false
   }
 }
 
@@ -54,8 +134,18 @@ const toggleSessionDetails = (sessionId) => {
   }
 }
 
-onMounted(() => {
-  fetchHistory()
+const buildPlotHref = (sessionId) => {
+  const params = new URLSearchParams({ sessionId: String(sessionId) })
+  if (remoteMode.value && selectedFile.value && selectedFile.value !== activeFile.value) {
+    params.set('file', selectedFile.value)
+  }
+
+  return `#/history/plot?${params.toString()}`
+}
+
+onMounted(async () => {
+  await fetchHistoryFiles()
+  await fetchHistory()
 })
 </script>
 
@@ -64,9 +154,20 @@ onMounted(() => {
     <div class="history-header">
       <h3>Run History</h3>
       <div class="header-buttons">
+        <button v-if="remoteMode" @click="storeSnapshot" :disabled="!canStoreSnapshot">{{ snapshotSaving ? 'Storing...' : 'Store Snapshot' }}</button>
         <button @click="fetchHistory" :disabled="loading">Refresh</button>
-        <button @click="clearHistory" :disabled="loading || sessions.length === 0" class="clear-btn">Clear All</button>
+        <button @click="clearHistory" :disabled="!canClearHistory" class="clear-btn">Clear All</button>
       </div>
+    </div>
+
+    <div v-if="remoteMode" class="history-file-toolbar">
+      <label for="history-file-select">Analysis File</label>
+      <select id="history-file-select" v-model="selectedFile" @change="fetchHistory" :disabled="loading || historyFiles.length === 0">
+        <option v-for="file in historyFiles" :key="file.name" :value="file.name">
+          {{ file.isActive ? `${file.name} (live)` : file.name }}
+        </option>
+      </select>
+      <span v-if="isArchiveSelection" class="history-file-note">Archive analysis mode</span>
     </div>
     
     <div v-if="loading" class="loading">Loading history...</div>
@@ -82,7 +183,7 @@ onMounted(() => {
           <span class="session-time" @click.stop="toggleSessionDetails(session.id)">{{ formatTimestamp(session.startTime) }}</span>
           <span class="session-status" :class="`status-${session.status.toLowerCase()}`" @click.stop="toggleSessionDetails(session.id)">{{ session.status }}</span>
           <span class="session-events-count" @click.stop="toggleSessionDetails(session.id)">{{ session.events.length }} events</span>
-          <a :href="`#/history/plot?sessionId=${session.id}`" class="plot-link-btn" @click.stop>Plot</a>
+          <a :href="buildPlotHref(session.id)" class="plot-link-btn" @click.stop>Plot</a>
           <span class="session-toggle" @click.stop="toggleSessionDetails(session.id)">{{ expandedSessionId === session.id ? '▼' : '▶' }}</span>
         </div>
         <div v-if="expandedSessionId === session.id" class="session-details">
@@ -134,6 +235,34 @@ onMounted(() => {
 .header-buttons {
   display: flex;
   gap: 0.5rem;
+}
+.history-file-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  background-color: #252525;
+  border: 1px solid #333;
+  border-radius: 8px;
+}
+.history-file-toolbar label {
+  font-size: 0.9em;
+  color: #aaa;
+  text-transform: uppercase;
+}
+.history-file-toolbar select {
+  flex: 1;
+  min-width: 0;
+  background-color: #1a1a1a;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 6px;
+  padding: 0.55rem 0.75rem;
+}
+.history-file-note {
+  color: #ff9f43;
+  font-size: 0.9em;
 }
 .clear-btn {
   background-color: #cf222e; /* Red from dashboard */

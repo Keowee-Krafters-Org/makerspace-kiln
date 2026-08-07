@@ -61,9 +61,41 @@ app.delete('/api/profiles/:id', async (req, res) => {
     res.json({ success: true });
 });
 
+app.get('/api/history/files', async (req, res) => {
+    try {
+        const files = await kilnDatabase.listHistoryFiles();
+        res.json({
+            remoteMode: config.isProduction,
+            activeFile: kilnDatabase.activeHistoryFileName,
+            files
+        });
+    } catch (error) {
+        console.error('Error listing history files:', error);
+        res.status(500).json({ success: false, message: 'Could not list history files.' });
+    }
+});
+
+app.post('/api/history/files', async (req, res) => {
+    try {
+        const snapshot = await kilnDatabase.storeHistorySnapshot(req.body?.fileName);
+        res.status(201).json({ success: true, file: snapshot });
+    } catch (error) {
+        const statusCode = error.message === 'Invalid history file name' ? 400 : 500;
+        console.error('Error storing history snapshot:', error);
+        res.status(statusCode).json({ success: false, message: error.message || 'Could not store history snapshot.' });
+    }
+});
+
 // GET /api/history - Get all history records
-app.get('/api/history', (req, res) => {
-    res.json(kilnDatabase.historyDb.data.sessions);
+app.get('/api/history', async (req, res) => {
+    try {
+        const sessions = await kilnDatabase.getHistorySessions(req.query.file);
+        res.json(sessions);
+    } catch (error) {
+        const statusCode = error.message === 'Invalid history file name' ? 400 : 404;
+        console.error('Error reading history:', error);
+        res.status(statusCode).json({ success: false, message: 'Could not load history.' });
+    }
 });
 
 // DELETE /api/history - Clear all history records
@@ -73,13 +105,19 @@ app.delete('/api/history', async (req, res) => {
 });
 
 // GET /api/history/:id - Get a single session by ID
-app.get('/api/history/:id', (req, res) => {
+app.get('/api/history/:id', async (req, res) => {
     const sessionId = parseInt(req.params.id, 10);
-    const session = kilnDatabase.historyDb.data.sessions.find(s => s.id === sessionId);
-    if (session) {
-        res.json(session);
-    } else {
-        res.status(404).json({ success: false, message: 'Session not found' });
+    try {
+        const session = await kilnDatabase.getHistorySessionById(sessionId, req.query.file);
+        if (session) {
+            res.json(session);
+        } else {
+            res.status(404).json({ success: false, message: 'Session not found' });
+        }
+    } catch (error) {
+        const statusCode = error.message === 'Invalid history file name' ? 400 : 404;
+        console.error(`Error reading history session ${sessionId}:`, error);
+        res.status(statusCode).json({ success: false, message: 'Could not load session data.' });
     }
 });
 

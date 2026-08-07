@@ -1,16 +1,16 @@
-import h, { dirname as R } from "path";
-import { fileURLToPath as D } from "url";
-import { Low as w } from "lowdb";
+import p, { dirname as _ } from "path";
+import { fileURLToPath as E } from "url";
+import { Low as b } from "lowdb";
 import "node:fs";
-import { writeFile as O, rename as j, readFile as $ } from "node:fs/promises";
-import { join as m, dirname as v, basename as A } from "node:path";
-import { fileURLToPath as P } from "node:url";
-import { SerialPort as _ } from "serialport";
-import k from "stream";
-import g from "express";
-import x from "cors";
-const L = D(import.meta.url), y = h.dirname(L), b = process.env.NODE_ENV === "production", l = {
-  isProduction: b,
+import { writeFile as N, rename as k, readFile as T, mkdir as g, stat as y, readdir as L } from "node:fs/promises";
+import { join as h, dirname as A, basename as x } from "node:path";
+import { fileURLToPath as C } from "node:url";
+import { SerialPort as M } from "serialport";
+import q from "stream";
+import S from "express";
+import J from "cors";
+const U = E(import.meta.url), I = p.dirname(U), P = process.env.NODE_ENV === "production", l = {
+  isProduction: P,
   // Serial Port Configuration
   // On Linux/RPi this is often /dev/ttyACM0 or /dev/ttyUSB0
   // On Windows this might be COM3, COM4, etc.
@@ -26,15 +26,15 @@ const L = D(import.meta.url), y = h.dirname(L), b = process.env.NODE_ENV === "pr
   // Web App Path (Changes based on environment)
   // Production (Pi): './public' (bundled as sibling to index.js)
   // Development Local: '../client/dist' (relative to source index.js)
-  clientPath: b ? h.join(y, "public") : h.join(y, "../client/dist")
+  clientPath: P ? p.join(I, "public") : p.join(I, "../client/dist")
   // Future: Google AppScript Configuration
   // cloudApiUrl: 'https://script.google.com/macros/s/...'
 };
-function F(i) {
-  const t = i instanceof URL ? P(i) : i.toString();
-  return m(v(t), `.${A(t)}.tmp`);
+function W(i) {
+  const t = i instanceof URL ? C(i) : i.toString();
+  return h(A(t), `.${x(t)}.tmp`);
 }
-async function q(i, t, e) {
+async function G(i, t, e) {
   for (let s = 0; s < t; s++)
     try {
       return await i();
@@ -45,55 +45,55 @@ async function q(i, t, e) {
         throw n;
     }
 }
-class H {
+class B {
   #t;
   #e;
   #s = !1;
   #n = null;
-  #o = null;
   #r = null;
+  #o = null;
   #i = null;
   // File is locked, add data for later
   #a(t) {
-    return this.#i = t, this.#r ||= new Promise((e, s) => {
-      this.#o = [e, s];
+    return this.#i = t, this.#o ||= new Promise((e, s) => {
+      this.#r = [e, s];
     }), new Promise((e, s) => {
-      this.#r?.then(e).catch(s);
+      this.#o?.then(e).catch(s);
     });
   }
   // File isn't locked, write data
   async #c(t) {
     this.#s = !0;
     try {
-      await O(this.#e, t, "utf-8"), await q(async () => {
-        await j(this.#e, this.#t);
+      await N(this.#e, t, "utf-8"), await G(async () => {
+        await k(this.#e, this.#t);
       }, 10, 100), this.#n?.[0]();
     } catch (e) {
       throw e instanceof Error && this.#n?.[1](e), e;
     } finally {
-      if (this.#s = !1, this.#n = this.#o, this.#o = this.#r = null, this.#i !== null) {
+      if (this.#s = !1, this.#n = this.#r, this.#r = this.#o = null, this.#i !== null) {
         const e = this.#i;
         this.#i = null, await this.write(e);
       }
     }
   }
   constructor(t) {
-    this.#t = t, this.#e = F(t);
+    this.#t = t, this.#e = W(t);
   }
   async write(t) {
     return this.#s ? this.#a(t) : this.#c(t);
   }
 }
-class U {
+class z {
   #t;
   #e;
   constructor(t) {
-    this.#t = t, this.#e = new H(t);
+    this.#t = t, this.#e = new B(t);
   }
   async read() {
     let t;
     try {
-      t = await $(this.#t, "utf-8");
+      t = await T(this.#t, "utf-8");
     } catch (e) {
       if (e.code === "ENOENT")
         return null;
@@ -105,12 +105,12 @@ class U {
     return this.#e.write(t);
   }
 }
-class W {
+class K {
   #t;
   #e;
   #s;
   constructor(t, { parse: e, stringify: s }) {
-    this.#t = new U(t), this.#e = e, this.#s = s;
+    this.#t = new z(t), this.#e = e, this.#s = s;
   }
   async read() {
     const t = await this.#t.read();
@@ -120,7 +120,7 @@ class W {
     return this.#t.write(this.#s(t));
   }
 }
-class I extends W {
+class j extends K {
   constructor(t) {
     super(t, {
       parse: JSON.parse,
@@ -128,13 +128,81 @@ class I extends W {
     });
   }
 }
-const G = v(P(import.meta.url)), T = process.env.NODE_ENV === "production" ? "/var/lib/kiln-controller" : G, J = m(T, "history.json"), M = m(T, "config.json"), B = new I(J), K = new I(M), E = { sessions: [] }, N = { profiles: [], preferences: {} };
-class V {
+const O = A(C(import.meta.url)), v = process.env.NODE_ENV === "production" ? "/var/lib/kiln-controller" : O, V = process.env.NODE_ENV === "production" ? v : h(O, "../log"), R = h(v, "history.json"), Y = h(v, "config.json"), Z = new j(R), Q = new j(Y), F = { sessions: [] }, H = { profiles: [], preferences: {} }, w = /^history(?:-[A-Za-z0-9._:-]+)?\.json$/, X = () => {
+  const i = /* @__PURE__ */ new Date(), t = (e) => String(e).padStart(2, "0");
+  return [
+    i.getFullYear(),
+    t(i.getMonth() + 1),
+    t(i.getDate())
+  ].join("-") + "-" + [
+    t(i.getHours()),
+    t(i.getMinutes()),
+    t(i.getSeconds())
+  ].join("-");
+};
+class tt {
   constructor(t, e, s, n) {
-    this.historyDb = new w(t, s), this.configDb = new w(e, n), this.lastWrite = null;
+    this.historyDb = new b(t, s), this.configDb = new b(e, n), this.lastWrite = null, this.historyFile = R, this.historyArchiveDir = V, this.activeHistoryFileName = "history.json";
   }
   async init() {
-    return await this.historyDb.read(), await this.configDb.read(), this.historyDb.data || (this.historyDb.data = E), this.configDb.data || (this.configDb.data = N), await this.historyDb.write(), await this.configDb.write(), this;
+    return await g(this.historyArchiveDir, { recursive: !0 }), await this.historyDb.read(), await this.configDb.read(), this.historyDb.data || (this.historyDb.data = F), this.configDb.data || (this.configDb.data = H), await this.historyDb.write(), await this.configDb.write(), this;
+  }
+  resolveHistoryFile(t) {
+    if (!t || t === this.activeHistoryFileName)
+      return this.historyFile;
+    if (!w.test(t))
+      throw new Error("Invalid history file name");
+    return h(this.historyArchiveDir, t);
+  }
+  async readHistoryFile(t) {
+    const e = this.resolveHistoryFile(t), s = await T(e, "utf-8"), n = JSON.parse(s);
+    if (!n || !Array.isArray(n.sessions))
+      throw new Error("Invalid history file format");
+    return n;
+  }
+  async getHistorySessions(t) {
+    return !t || t === this.activeHistoryFileName ? this.historyDb.data.sessions || [] : (await this.readHistoryFile(t)).sessions;
+  }
+  async getHistorySessionById(t, e) {
+    return (await this.getHistorySessions(e)).find((n) => n.id === t) || null;
+  }
+  async listHistoryFiles() {
+    await g(this.historyArchiveDir, { recursive: !0 });
+    const t = /* @__PURE__ */ new Map(), e = await y(this.historyFile);
+    t.set(this.activeHistoryFileName, {
+      name: this.activeHistoryFileName,
+      isActive: !0,
+      updatedAt: e.mtime.toISOString(),
+      size: e.size
+    });
+    const s = await L(this.historyArchiveDir, { withFileTypes: !0 });
+    for (const n of s) {
+      if (!n.isFile() || !w.test(n.name))
+        continue;
+      const r = h(this.historyArchiveDir, n.name), u = await y(r);
+      t.set(n.name, {
+        name: n.name,
+        isActive: n.name === this.activeHistoryFileName,
+        updatedAt: u.mtime.toISOString(),
+        size: u.size
+      });
+    }
+    return Array.from(t.values()).sort((n, r) => n.isActive !== r.isActive ? n.isActive ? -1 : 1 : r.updatedAt.localeCompare(n.updatedAt));
+  }
+  async storeHistorySnapshot(t) {
+    await g(this.historyArchiveDir, { recursive: !0 });
+    const e = t || `history-${X()}.json`;
+    if (e === this.activeHistoryFileName || !w.test(e))
+      throw new Error("Invalid history file name");
+    const s = h(this.historyArchiveDir, e);
+    await N(s, JSON.stringify(this.historyDb.data, null, 2), "utf-8");
+    const n = await y(s);
+    return {
+      name: e,
+      isActive: !1,
+      updatedAt: n.mtime.toISOString(),
+      size: n.size
+    };
   }
   /**
    * Creates a new session in the history database.
@@ -192,10 +260,10 @@ class V {
   async addSessionEvent(t, e) {
     const s = this.historyDb.data.sessions.find((n) => n.id === t);
     if (s) {
-      const n = new Date(s.startTime), r = /* @__PURE__ */ new Date(), p = Math.round((r - n) / 1e3);
+      const n = new Date(s.startTime), r = /* @__PURE__ */ new Date(), u = Math.round((r - n) / 1e3);
       s.events.push({
         ...e,
-        elapsedTime: p
+        elapsedTime: u
       }), (!this.lastWrite || r - this.lastWrite > l.dbWriteInterval) && (await this.historyDb.write(), this.lastWrite = r);
     }
   }
@@ -218,17 +286,17 @@ class V {
     this.historyDb.data.sessions = [], await this.historyDb.write();
   }
 }
-const a = await new V(
-  B,
-  K,
-  E,
-  N
+const a = await new tt(
+  Z,
+  Q,
+  F,
+  H
 ).init();
-var S = {}, d = {};
-Object.defineProperty(d, "__esModule", { value: !0 });
-d.DelimiterParser = void 0;
-const z = k;
-class Y extends z.Transform {
+var D = {}, m = {};
+Object.defineProperty(m, "__esModule", { value: !0 });
+m.DelimiterParser = void 0;
+const et = q;
+class st extends et.Transform {
   includeDelimiter;
   delimiter;
   buffer;
@@ -249,11 +317,11 @@ class Y extends z.Transform {
     this.push(this.buffer), this.buffer = Buffer.alloc(0), t();
   }
 }
-d.DelimiterParser = Y;
-Object.defineProperty(S, "__esModule", { value: !0 });
-var C = S.ReadlineParser = void 0;
-const Q = d;
-class X extends Q.DelimiterParser {
+m.DelimiterParser = st;
+Object.defineProperty(D, "__esModule", { value: !0 });
+var $ = D.ReadlineParser = void 0;
+const it = m;
+class nt extends it.DelimiterParser {
   constructor(t) {
     const e = {
       delimiter: Buffer.from(`
@@ -264,21 +332,21 @@ class X extends Q.DelimiterParser {
     typeof e.delimiter == "string" && (e.delimiter = Buffer.from(e.delimiter, e.encoding)), super(e);
   }
 }
-C = S.ReadlineParser = X;
-class Z {
+$ = D.ReadlineParser = nt;
+class rt {
   constructor(t, e = 9600) {
     this.portPath = t, this.baudRate = e, this.port = null, this.parser = null, this.onStatusCallback = null, this.lastState = "IDLE", this.activeSessionId = null, this.isConnecting = !1, this.reconnectInterval = null;
   }
   connect() {
     return this.reconnectInterval && (clearInterval(this.reconnectInterval), this.reconnectInterval = null), this.isConnecting || this.port && this.port.isOpen ? Promise.resolve() : (this.isConnecting = !0, console.log(`Attempting to connect to kiln on ${this.portPath}...`), new Promise((t, e) => {
-      this.port = new _({ path: this.portPath, baudRate: this.baudRate }, (s) => {
+      this.port = new M({ path: this.portPath, baudRate: this.baudRate }, (s) => {
         if (this.isConnecting = !1, s)
           return console.error(`Failed to open port ${this.portPath}:`, s.message), this.scheduleReconnect(), e(s);
       }), this.port.on("error", (s) => {
         console.error("Serial Port Error:", s.message);
       }), this.port.on("close", () => {
         console.log("Serial port closed. Attempting to reconnect..."), this.port = null, this.scheduleReconnect();
-      }), this.parser = this.port.pipe(new C({ delimiter: `\r
+      }), this.parser = this.port.pipe(new $({ delimiter: `\r
 ` })), this.parser.on("data", (s) => {
         if (!(!s || s.trim() === ""))
           try {
@@ -320,8 +388,8 @@ class Z {
         if (r)
           this.activeSessionId = r.id, console.log(`[SESSION] Resumed session: ${this.activeSessionId} for profile ${t.profileId}`);
         else {
-          const p = await a.createSession(t.profileId);
-          this.activeSessionId = p.id, console.log(`[SESSION] Started new session: ${this.activeSessionId} for profile ${t.profileId}`);
+          const u = await a.createSession(t.profileId);
+          this.activeSessionId = u.id, console.log(`[SESSION] Started new session: ${this.activeSessionId} for profile ${t.profileId}`);
         }
       }
     }
@@ -380,16 +448,16 @@ class Z {
     e !== void 0 && (n.duration = e), s !== void 0 && (n.setPoint = s), this.sendCommand(n);
   }
 }
-const tt = D(import.meta.url);
-R(tt);
+const ot = E(import.meta.url);
+_(ot);
 console.log("Initializing Kiln Controller Service...");
 console.log(`Environment: ${l.isProduction ? "Production" : "Development"}`);
 console.log(`Serving Client from: ${l.clientPath}`);
-const c = new Z(l.serialPort, l.baudRate), o = g();
-let f = { state: "UNKNOWN", timestamp: 0 }, u = [];
-o.use(x());
-o.use(g.json());
-o.use(g.static(l.clientPath));
+const c = new rt(l.serialPort, l.baudRate), o = S();
+let f = { state: "UNKNOWN", timestamp: 0 }, d = [];
+o.use(J());
+o.use(S.json());
+o.use(S.static(l.clientPath));
 o.get("/api/preferences", async (i, t) => {
   const e = await a.getPreferences();
   t.json(e);
@@ -414,15 +482,48 @@ o.delete("/api/profiles/:id", async (i, t) => {
   const e = parseInt(i.params.id);
   await a.deleteProfile(e), t.json({ success: !0 });
 });
-o.get("/api/history", (i, t) => {
-  t.json(a.historyDb.data.sessions);
+o.get("/api/history/files", async (i, t) => {
+  try {
+    const e = await a.listHistoryFiles();
+    t.json({
+      remoteMode: l.isProduction,
+      activeFile: a.activeHistoryFileName,
+      files: e
+    });
+  } catch (e) {
+    console.error("Error listing history files:", e), t.status(500).json({ success: !1, message: "Could not list history files." });
+  }
+});
+o.post("/api/history/files", async (i, t) => {
+  try {
+    const e = await a.storeHistorySnapshot(i.body?.fileName);
+    t.status(201).json({ success: !0, file: e });
+  } catch (e) {
+    const s = e.message === "Invalid history file name" ? 400 : 500;
+    console.error("Error storing history snapshot:", e), t.status(s).json({ success: !1, message: e.message || "Could not store history snapshot." });
+  }
+});
+o.get("/api/history", async (i, t) => {
+  try {
+    const e = await a.getHistorySessions(i.query.file);
+    t.json(e);
+  } catch (e) {
+    const s = e.message === "Invalid history file name" ? 400 : 404;
+    console.error("Error reading history:", e), t.status(s).json({ success: !1, message: "Could not load history." });
+  }
 });
 o.delete("/api/history", async (i, t) => {
   await a.clearHistory(), t.json({ success: !0, message: "History cleared" });
 });
-o.get("/api/history/:id", (i, t) => {
-  const e = parseInt(i.params.id, 10), s = a.historyDb.data.sessions.find((n) => n.id === e);
-  s ? t.json(s) : t.status(404).json({ success: !1, message: "Session not found" });
+o.get("/api/history/:id", async (i, t) => {
+  const e = parseInt(i.params.id, 10);
+  try {
+    const s = await a.getHistorySessionById(e, i.query.file);
+    s ? t.json(s) : t.status(404).json({ success: !1, message: "Session not found" });
+  } catch (s) {
+    const n = s.message === "Invalid history file name" ? 400 : 404;
+    console.error(`Error reading history session ${e}:`, s), t.status(n).json({ success: !1, message: "Could not load session data." });
+  }
 });
 o.get("/api/events", (i, t) => {
   t.setHeader("Content-Type", "text/event-stream"), t.setHeader("Cache-Control", "no-cache"), t.setHeader("Connection", "keep-alive"), t.flushHeaders();
@@ -434,8 +535,8 @@ o.get("/api/events", (i, t) => {
     id: s,
     res: t
   };
-  u.push(n), i.on("close", () => {
-    u = u.filter((r) => r.id !== s);
+  d.push(n), i.on("close", () => {
+    d = d.filter((r) => r.id !== s);
   });
 });
 o.get("/api/status", (i, t) => {
@@ -489,16 +590,16 @@ o.post("/api/test/temp", (i, t) => {
 });
 c.onStatus(async (i) => {
   const t = f.state;
-  f = { ...i, timestamp: Date.now() }, u.forEach((n) => {
+  f = { ...i, timestamp: Date.now() }, d.forEach((n) => {
     n.res.write(`data: ${JSON.stringify(f)}
 
 `);
   }), ((await a.getPreferences()).logLevel || "verbose") === "quiet" ? (i.state && i.state !== t && console.log(`[STATE CHANGE] ${t} -> ${i.state}`), i.message && i.message.includes("Lost contact") && console.log(`[CONNECTION] ${i.message}`)) : i.state ? console.log("[STATUS]", JSON.stringify(i)) : i.message ? console.log(`[MSG] ${i.message}`) : console.log("[DATA]", i);
 });
 o.get("*", (i, t) => {
-  t.sendFile(h.join(l.clientPath, "index.html"));
+  t.sendFile(p.join(l.clientPath, "index.html"));
 });
-async function et() {
+async function at() {
   try {
     await c.connect(), o.listen(l.serverPort, () => {
       console.log(`Web API running on http://localhost:${l.serverPort}`);
@@ -514,4 +615,4 @@ Service stopping. Turning off kiln...`), c.reconnectInterval && clearInterval(c.
     console.error("FATAL: Unrecoverable error during service startup."), console.error("Details:", i.message), process.exit(1);
   }
 }
-et();
+at();

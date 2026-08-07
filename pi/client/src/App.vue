@@ -58,7 +58,10 @@ const currentViewProps = computed(() => {
     const params = new URLSearchParams(queryString);
     const sessionId = params.get('sessionId');
     if (sessionId) {
-      return { sessionId };
+      return {
+        sessionId,
+        historyFile: params.get('file') || undefined
+      };
     }
   }
 

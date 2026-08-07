@@ -53,6 +53,10 @@ unsigned long saturationLagStartTime = 0;
 double saturationLagStartTemp = 0.0;
 const char* trackingFaultReason = "";
 
+// SSR thermal fault detection (LC1219Z protection)
+unsigned long ssrThermalFaultStartTime = 0;
+double ssrThermalFaultStartTemp = 0.0;
+
 // LED
 unsigned long ledLastChangeTime = 0;
 bool ledState = HIGH;
@@ -263,12 +267,39 @@ void loop() {
         }
         
         kilnPID.Compute();
+        
+        // SSR thermal protection: cap output at 85% to keep LC1219Z junction safe
+        if (output > SSR_MAX_DUTY_CYCLE) {
+            output = SSR_MAX_DUTY_CYCLE;
+        }
 
         bool heatOn = output > (now - windowStartTime);
         setSSRState(SSR_UPPER, heatOn);
         setSSRState(SSR_LOWER, heatOn);
         ssrUpperOn = heatOn;
         ssrLowerOn = heatOn;
+
+        // Check for SSR thermal fault (output capped but temp not rising)
+        if (checkSSRThermalFault(now)) {
+            forceStop();
+            lastErrorType = "SSR_THERMAL";
+            lastErrorMessage = "SSR thermal fault detected (probable thermal fold-back)";
+            lastFaultCode = 0;
+            currentState = ERROR_STATE;
+
+            JsonDocument doc;
+            doc["state"] = "ERROR";
+            doc["error_type"] = "SSR_THERMAL";
+            doc["message"] = lastErrorMessage;
+            doc["setpoint"] = setpoint;
+            doc["input"] = input;
+            doc["deviation"] = lastTrackingDeviation;
+            doc["output_capped"] = SSR_MAX_DUTY_CYCLE;
+            doc["window_ms"] = SSR_THERMAL_FAULT_WINDOW_MS;
+            doc["min_rise"] = SSR_THERMAL_FAULT_MIN_RISE_C;
+            serializeJson(doc, Serial_);
+            Serial_.println();
+        }
 
         // Tracking window safety check (after PID so output demand is current).
         if (checkTrackingWindowFault(now)) {
@@ -654,6 +685,52 @@ bool checkTrackingWindowFault(unsigned long now) {
     return false;
 }
 
+bool checkSSRThermalFault(unsigned long now) {
+    // Detect SSR thermal fold-back: output is capped but temperature not rising.
+    // LC1219Z SSRs have Tj(max)=120°C and derate sharply at 50°C+ ambient.
+    // If control box near kiln reaches 60-80°C and SSR in thermal stress,
+    // it may enter fold-back or latch. This function detects that pattern.
+    
+    if (isnan(input) || !(currentState == RAMP || currentState == SOAK)) {
+        ssrThermalFaultStartTime = 0;
+        ssrThermalFaultStartTemp = input;
+        return false;
+    }
+
+    // Only check if output is capped (at SSR_MAX_DUTY_CYCLE limit)
+    // and there is substantial heat demand
+    bool outputCapped = output >= SSR_MAX_DUTY_CYCLE;
+    bool heatDemand = setpoint >= RESPONSE_LAG_MIN_SETPOINT_C && 
+                      (setpoint - input) >= RESPONSE_LAG_DEMAND_C;
+
+    if (!outputCapped || !heatDemand) {
+        ssrThermalFaultStartTime = 0;
+        ssrThermalFaultStartTemp = input;
+        return false;
+    }
+
+    // Output is capped and heat demand is present.
+    // If temperature isn't rising over 2 minutes, SSR likely in fold-back.
+    if (ssrThermalFaultStartTime == 0) {
+        ssrThermalFaultStartTime = now;
+        ssrThermalFaultStartTemp = input;
+    } else if ((now - ssrThermalFaultStartTime) >= SSR_THERMAL_FAULT_WINDOW_MS) {
+        double rise = input - ssrThermalFaultStartTemp;
+        if (rise < SSR_THERMAL_FAULT_MIN_RISE_C) {
+            // Temperature stalled despite capped output and demand
+            lastTrackingDeviation = setpoint - input;
+            trackingFaultReason = "SSR_THERMAL_FAULT";
+            return true;
+        } else {
+            // Temp rising, reset window
+            ssrThermalFaultStartTime = now;
+            ssrThermalFaultStartTemp = input;
+        }
+    }
+
+    return false;
+}
+
 unsigned long calculateTotalDuration() {
     unsigned long total = 0;
     double currentTemp = isnan(input) ? 25.0 : input;
@@ -725,6 +802,8 @@ void reportStatus(bool force) {
         doc["output"] = output;
         doc["ssrUpper"] = ssrUpperOn;
         doc["ssrLower"] = ssrLowerOn;
+        doc["ssrMaxDutyCycle"] = SSR_MAX_DUTY_CYCLE;  // SSR thermal protection limit
+        doc["ssrOutputCapped"] = (output >= SSR_MAX_DUTY_CYCLE);  // Is output at limit?
         doc["isSimulated"] = isSimulated;
 
         if (currentState == ERROR_STATE && lastErrorType[0] != '\0') {

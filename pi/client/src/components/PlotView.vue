@@ -36,11 +36,23 @@ const props = defineProps({
     type: [String, Number],
     required: true,
   },
+  historyFile: {
+    type: String,
+    default: undefined,
+  },
 });
 
 const session = ref(null);
 const loading = ref(false);
 const error = ref(null);
+
+const backLink = computed(() => {
+  if (!props.historyFile) {
+    return '#/history';
+  }
+
+  return `#/history?file=${encodeURIComponent(props.historyFile)}`;
+});
 
 const chartData = computed(() => {
   if (!session.value || !session.value.events || session.value.events.length === 0) {
@@ -132,7 +144,9 @@ const fetchSession = async () => {
   error.value = null;
   console.log(`Fetching data for session ID: ${props.sessionId}`);
   try {
-    const response = await axios.get(`/api/history/${props.sessionId}`);
+    const response = await axios.get(`/api/history/${props.sessionId}`, {
+      params: props.historyFile ? { file: props.historyFile } : {},
+    });
     session.value = response.data;
     console.log('Session data received:', session.value);
   } catch (err) {
@@ -154,7 +168,7 @@ onMounted(fetchSession);
   <div class="card plot-view">
     <div class="plot-header">
       <h3>Run #{{ sessionId }} - Temperature Plot</h3>
-      <a href="#history" class="back-link">Back to History</a>
+      <a :href="backLink" class="back-link">Back to History</a>
     </div>
     <div v-if="loading" class="loading">Loading plot data...</div>
     <div v-if="error" class="error-message">{{ error }}</div>
